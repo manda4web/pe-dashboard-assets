@@ -196,6 +196,7 @@ var TIP = null;
 function initTip(){ TIP = $("peTip"); }
 function bindTip(el, html){
   if (!TIP) initTip();
+  if (!TIP) return; /* elemento nao existe no HTML */
   el.addEventListener("mouseenter", function(){ TIP.innerHTML = html; TIP.style.opacity = 1; });
   el.addEventListener("mousemove", function(e){
     var x = Math.min(e.clientX + 14, window.innerWidth - 300);
@@ -204,7 +205,7 @@ function bindTip(el, html){
   el.addEventListener("mouseleave", function(){ TIP.style.opacity = 0; });
 }
 
-function setStatus(msg){ $("peStatus").textContent = msg; }
+function setStatus(msg){ var el = $("peStatus"); if (el) el.textContent = msg; }
 
 /* =====================================================================
    4. ESTADO + CACHE + CHART.JS
@@ -502,7 +503,8 @@ function tile(label, value, foot){
 }
 
 function renderTiles(t, dias){
-  $("peTiles").innerHTML =
+  var el = $("peTiles"); if (!el) return;
+  el.innerHTML =
     tile("Cotas vendidas", nfInt.format(t.cotas), "negocios em Vendido") +
     tile("Ticket medio", moneyShort(t.ticket), "faturamento / cotas") +
     tile("Leads recebidos", nfInt.format(t.leads), "criados no periodo") +
@@ -512,8 +514,9 @@ function renderTiles(t, dias){
 }
 
 function renderEquipeCards(t, dias, titulo, meta){
-  $("peEquipeTitle").textContent = titulo;
-  $("peEquipeTiles").innerHTML =
+  var titleEl = $("peEquipeTitle"); if (titleEl) titleEl.textContent = titulo;
+  var tilesEl = $("peEquipeTiles"); if (!tilesEl) return;
+  tilesEl.innerHTML =
     tile("Meta do periodo", moneyShort(meta), "configuravel em CFG.METAS") +
     tile("Vendas da equipe", moneyShort(t.faturamento), nfInt.format(t.cotas) + " cotas") +
     tile("Taxa de conversao", (t.entrevistas ? nfDec.format(t.txConv * 100) + "%" : "-"), "cotas / entrevistas") +
@@ -529,14 +532,13 @@ function renderEquipeCards(t, dias, titulo, meta){
 }
 
 function renderHero(t, meta){
-  $("peHero").textContent = money(t.faturamento);
-  $("peHeroNote").innerHTML = nfInt.format(t.cotas) + " cotas &middot; ticket medio " + moneyShort(t.ticket);
+  var hero = $("peHero"); if (hero) hero.textContent = money(t.faturamento);
+  var heroNote = $("peHeroNote"); if (heroNote) heroNote.innerHTML = nfInt.format(t.cotas) + " cotas &middot; ticket medio " + moneyShort(t.ticket);
   var p = meta ? t.faturamento * 100 / meta : 0;
   var fill = $("peMeterFill");
-  fill.style.width = Math.min(100, p).toFixed(1) + "%";
-  fill.style.background = p >= 100 ? "var(--good)" : "var(--series-1)";
-  $("peMetaTxt").textContent = "Meta " + moneyShort(meta);
-  $("peMetaPct").textContent = nfDec.format(p) + "% atingido";
+  if (fill) { fill.style.width = Math.min(100, p).toFixed(1) + "%"; fill.style.background = p >= 100 ? "var(--good)" : "var(--series-1)"; }
+  var metaTxt = $("peMetaTxt"); if (metaTxt) metaTxt.textContent = "Meta " + moneyShort(meta);
+  var metaPct = $("peMetaPct"); if (metaPct) metaPct.textContent = nfDec.format(p) + "% atingido";
 }
 
 function renderFunil(t){
@@ -550,6 +552,7 @@ function renderFunil(t){
   var max = Math.max.apply(null, etapas.map(function(e){ return e.v; })) || 1;
   var base = t.leads || max;
   var el = $("peFunnel");
+  if (!el) return;
   el.innerHTML = "";
   etapas.forEach(function(e, i){
     var row = document.createElement("div"); row.className = "fRow";
@@ -566,6 +569,24 @@ function renderFunil(t){
 /* =====================================================================
    8B. CHART.JS — GRAFICOS INTERATIVOS
    ===================================================================== */
+
+/* Fallback: barras CSS para quando Chart.js ou containers novos nao existem */
+function renderBarrasFallback(elId, linhas, campo, fmt){
+  var el = $(elId); if (!el) return;
+  var dados = linhas.slice().sort(function(a,b){ return b[campo] - a[campo]; })
+    .filter(function(r){ return r[campo] > 0; }).slice(0, CFG.TOP_BARRAS);
+  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados no periodo.</div>'; return; }
+  var max = dados[0][campo] || 1;
+  el.innerHTML = "";
+  dados.forEach(function(r){
+    var row = document.createElement("div"); row.className = "barRow";
+    row.innerHTML = '<div class="barName" title="' + esc(r.nome) + '">' + esc(r.nome) + '</div>' +
+      '<div class="barTrack"><div class="barFill" style="width:' + Math.max(0.6, r[campo] * 100 / max).toFixed(2) + '%"></div></div>' +
+      '<div class="barVal">' + fmt(r[campo]) + '</div>';
+    el.appendChild(row);
+  });
+}
+
 function makeChart(canvasId, config){
   if (CHARTS[canvasId]) CHARTS[canvasId].destroy();
   var ctx = $(canvasId);
@@ -576,11 +597,14 @@ function makeChart(canvasId, config){
 
 /* Grafico 1: Barras horizontais - Entrevistas */
 function renderChartEntrevistas(linhas){
+  var el = $("peChartEntrevWrap");
+  /* fallback: se o container novo nao existe, tenta barras CSS no container antigo */
+  if (!el) { renderBarrasFallback("peChartEntrev", linhas, "entrevistas", function(v){ return nfInt.format(v); }); return; }
   var dados = linhas.slice().sort(function(a,b){ return b.entrevistas - a.entrevistas; })
     .filter(function(r){ return r.entrevistas > 0; }).slice(0, CFG.TOP_BARRAS);
-  var el = $("peChartEntrevWrap");
-  if (!dados.length) { if (el) el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
-  if (el) el.innerHTML = '<canvas id="peCanvasEntrev" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
+  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
+  el.innerHTML = '<canvas id="peCanvasEntrev" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
+  if (typeof Chart === "undefined") { renderBarrasFallback("peChartEntrevWrap", linhas, "entrevistas", function(v){ return nfInt.format(v); }); return; }
   makeChart("peCanvasEntrev", {
     type: "bar",
     data: { labels: dados.map(function(r){ return r.nome; }),
@@ -597,11 +621,13 @@ function renderChartEntrevistas(linhas){
 
 /* Grafico 2: Barras horizontais - Faturamento */
 function renderChartFaturamento(linhas){
+  var el = $("peChartFatWrap");
+  if (!el) { renderBarrasFallback("peChartFat", linhas, "faturamento", moneyShort); return; }
   var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
     .filter(function(r){ return r.faturamento > 0; }).slice(0, CFG.TOP_BARRAS);
-  var el = $("peChartFatWrap");
-  if (!dados.length) { if (el) el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
-  if (el) el.innerHTML = '<canvas id="peCanvasFat" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
+  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
+  el.innerHTML = '<canvas id="peCanvasFat" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
+  if (typeof Chart === "undefined") { renderBarrasFallback("peChartFatWrap", linhas, "faturamento", moneyShort); return; }
   makeChart("peCanvasFat", {
     type: "bar",
     data: { labels: dados.map(function(r){ return r.nome; }),
@@ -619,6 +645,8 @@ function renderChartFaturamento(linhas){
 
 /* Grafico 3: Tendencia diaria (faturamento acum + leads + entrevistas) */
 function renderChartTendencia(porDia, de, ate){
+  var el = $("peChartTrendWrap");
+  if (!el || typeof Chart === "undefined") return;
   var dias = [], dAtual = new Date(de + "T00:00:00"), dFim = new Date(ate + "T00:00:00");
   while (dAtual <= dFim) { dias.push(iso(dAtual)); dAtual.setDate(dAtual.getDate() + 1); }
   var fatAcum = 0, dataFatAcum = [], dataLeads = [], dataEntrev = [];
@@ -628,8 +656,7 @@ function renderChartTendencia(porDia, de, ate){
     dataLeads.push(d.leads); dataEntrev.push(d.entrevistas || 0);
   });
   var labels = dias.map(function(d){ return d.substring(5).replace("-","/"); });
-  var el = $("peChartTrendWrap");
-  if (el) el.innerHTML = '<canvas id="peCanvasTrend" height="260"></canvas>';
+  el.innerHTML = '<canvas id="peCanvasTrend" height="260"></canvas>';
   makeChart("peCanvasTrend", {
     type: "line",
     data: { labels: labels, datasets: [
@@ -651,6 +678,8 @@ function renderChartTendencia(porDia, de, ate){
 
 /* Grafico 4: Drill-down por equipe */
 function renderChartDrillEquipe(linhas){
+  var el = $("peChartDrillWrap");
+  if (!el || typeof Chart === "undefined") return;
   var porEq = {};
   linhas.forEach(function(r){
     if (!porEq[r.equipe]) porEq[r.equipe] = { cotas: 0, entrevistas: 0, faturamento: 0, leads: 0, vcAgendadas: 0 };
@@ -660,8 +689,7 @@ function renderChartDrillEquipe(linhas){
   });
   var eqs = Object.keys(porEq).sort(function(a,b){ return porEq[b].faturamento - porEq[a].faturamento; });
   if (!eqs.length) return;
-  var el = $("peChartDrillWrap");
-  if (el) el.innerHTML = '<canvas id="peCanvasDrill" height="300"></canvas>';
+  el.innerHTML = '<canvas id="peCanvasDrill" height="300"></canvas>';
   makeChart("peCanvasDrill", {
     type: "bar",
     data: { labels: eqs, datasets: [
@@ -680,10 +708,11 @@ function renderChartDrillEquipe(linhas){
 
 /* Grafico 5: Ranking animado Top 10 */
 function renderChartRanking(linhas){
+  var el = $("peChartRankWrap");
+  if (!el || typeof Chart === "undefined") return;
   var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
     .filter(function(r){ return r.faturamento > 0; }).slice(0, 10);
-  var el = $("peChartRankWrap");
-  if (!dados.length) { if (el) el.innerHTML = '<div class="empty">Sem dados para ranking.</div>'; return; }
+  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados para ranking.</div>'; return; }
   var cores = dados.map(function(r, i){ var idx = DIM.equipes.indexOf(r.equipe); return corEquipe(idx >= 0 ? idx : i); });
   if (el) el.innerHTML = '<canvas id="peCanvasRank" height="' + Math.max(250, dados.length * 36) + '"></canvas>';
   makeChart("peCanvasRank", {
@@ -703,6 +732,8 @@ function renderChartRanking(linhas){
 
 /* Grafico 6 (NOVO): Radar comparativo de equipes */
 function renderChartRadar(linhas){
+  var radarEl = $("peChartRadarWrap");
+  if (!radarEl || typeof Chart === "undefined") return;
   var porEq = {};
   linhas.forEach(function(r){
     if (!porEq[r.equipe]) porEq[r.equipe] = { entrevistas:0, cotas:0, leads:0, indicacoes:0, vcAgendadas:0 };
@@ -711,7 +742,7 @@ function renderChartRadar(linhas){
     e.indicacoes += r.indicacoes; e.vcAgendadas += r.vcAgendadas;
   });
   var eqs = Object.keys(porEq).filter(function(e){ return e !== "(sem equipe)"; }).slice(0, 6);
-  if (eqs.length < 2) { var el = $("peChartRadarWrap"); if (el) el.innerHTML = ''; return; }
+  if (eqs.length < 2) { radarEl.innerHTML = ''; return; }
   var el = $("peChartRadarWrap");
   if (el) el.innerHTML = '<canvas id="peCanvasRadar" height="300"></canvas>';
   var datasets = eqs.map(function(eq, i){
@@ -887,7 +918,8 @@ function pintar(){
   renderTabela("peTblSup", COLS_SUP, sup, "faturamento");
 
   var temManual = LAST.linhas.some(function(r){ return r.mensagens > 0 || r.ligacoes > 0; });
-  $("peAviso").innerHTML = "<b>Sobre Mensagens e Ligacoes:</b> " +
+  var avisoEl = $("peAviso");
+  if (avisoEl) avisoEl.innerHTML = "<b>Sobre Mensagens e Ligacoes:</b> " +
     (temManual ? "usando campos manuais do relatorio diario." : "campos manuais vazios no CRM. Preencha-os ou libere escopo telephony.") +
     " Demais numeros vem do funil e historico de etapas.";
 
