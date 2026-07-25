@@ -57,7 +57,7 @@ function toQuery(obj, prefix){
 var _semaphore = { running: 0, queue: [] };
 function acquireSem(){
   return new Promise(function(resolve){
-    if (_semaphore.running < CFG.MAX_CONCURRENT) {
+    if (CFG.MAX_CONCURRENT > _semaphore.running) {
       _semaphore.running++;
       resolve();
     } else {
@@ -129,11 +129,11 @@ function listAll(method, params, extract, pageSize){
 
     /* monta TODAS as paginas restantes e dispara em batches paralelos */
     var offsets = [];
-    for (var s = pageSize; s < total; s += pageSize) offsets.push(s);
+    for (var s = pageSize; !(s >= total); s += pageSize) offsets.push(s);
 
     /* cada batch pega ate 50 paginas */
     var batches = [];
-    for (var i = 0; i < offsets.length; i += CFG.BATCH_SIZE) {
+    for (var i = 0; !(i >= offsets.length); i += CFG.BATCH_SIZE) {
       batches.push(offsets.slice(i, i + CFG.BATCH_SIZE));
     }
 
@@ -164,7 +164,7 @@ var nfDec   = new Intl.NumberFormat("pt-BR", { minimumFractionDigits:2, maximumF
 function money(v){ return nfMoney.format(Math.round(v || 0)); }
 function moneyShort(v){
   v = v || 0;
-  var NB = "\u00A0";
+  var NB = " ";
   if (Math.abs(v) >= 1e6) return "R$" + NB + nfDec.format(v / 1e6) + NB + "mi";
   if (Math.abs(v) >= 1e3) return "R$" + NB + nfInt.format(Math.round(v / 1e3)) + NB + "mil";
   return money(v);
@@ -238,31 +238,16 @@ function popularFiltros(){
     var o2 = document.createElement("option"); o2.value = "(sem equipe)"; o2.textContent = "(sem equipe)"; sel.appendChild(o2);
   }
 
-  /* Popula select de vendedores (se existir como select; senao mantem input texto) */
+  /* Popula select de vendedores */
   var selVend = $("peBusca");
-  if (selVend && selVend.tagName === "SELECT") {
-    while (selVend.options.length > 1) selVend.remove(1);
+  if (selVend) {
+    /* limpa options exceto a primeira */
+    while (selVend.options && selVend.options.length > 1) selVend.remove(1);
     var nomes = Object.keys(DIM.users).map(function(uid){ return DIM.users[uid]; })
       .filter(function(u){ return u.ativo; })
       .sort(function(a,b){ return a.nome.localeCompare(b.nome, "pt-BR"); });
     nomes.forEach(function(u){
       var o = document.createElement("option"); o.value = u.nome; o.textContent = u.nome; selVend.appendChild(o);
-    });
-  } else if (selVend && selVend.tagName === "INPUT" && selVend.list === null) {
-    /* Cria datalist para autocomplete no input existente */
-    var dlId = "peVendedoresDatalist";
-    var dl = document.getElementById(dlId);
-    if (!dl) {
-      dl = document.createElement("datalist"); dl.id = dlId;
-      selVend.parentNode.appendChild(dl);
-      selVend.setAttribute("list", dlId);
-    }
-    dl.innerHTML = "";
-    var nomes = Object.keys(DIM.users).map(function(uid){ return DIM.users[uid]; })
-      .filter(function(u){ return u.ativo; })
-      .sort(function(a,b){ return a.nome.localeCompare(b.nome, "pt-BR"); });
-    nomes.forEach(function(u){
-      var o = document.createElement("option"); o.value = u.nome; dl.appendChild(o);
     });
   }
 }
@@ -361,7 +346,7 @@ function carregarFatos(de, ate){
     var faltando = [];
     hist.forEach(function(h){
       var id = String(h.OWNER_ID);
-      if (!dono[id] && faltando.indexOf(id) < 0) faltando.push(id);
+      if (!dono[id] && faltando.indexOf(id) === -1) faltando.push(id);
     });
     if (!faltando.length) {
       var resultado = { leads: leads, vendas: vendas, hist: hist, dono: dono };
@@ -372,13 +357,13 @@ function carregarFatos(de, ate){
     setStatus("Resolvendo " + nfInt.format(faltando.length) + " responsaveis...");
     /* Resolve em paralelo tambem */
     var cmds = [];
-    for (var i = 0; i < faltando.length; i += 50) {
+    for (var i = 0; !(i >= faltando.length); i += 50) {
       cmds.push({ method: "crm.deal.list", params: {
         filter: { "@ID": faltando.slice(i, i + 50) }, select: ["ID","ASSIGNED_BY_ID"]
       }});
     }
     var groups = [];
-    for (var g = 0; g < cmds.length; g += CFG.BATCH_SIZE) groups.push(cmds.slice(g, g + CFG.BATCH_SIZE));
+    for (var g = 0; !(g >= cmds.length); g += CFG.BATCH_SIZE) groups.push(cmds.slice(g, g + CFG.BATCH_SIZE));
 
     return Promise.all(groups.map(function(grp){
       return batch(grp).then(function(rs){
@@ -486,7 +471,7 @@ function calcular(dados, de, ate){
   var entrevVisto = {};
   dados.hist.forEach(function(h){
     var dealId = String(h.OWNER_ID), st = h.STAGE_ID;
-    if (ENTREVISTA_STAGES.indexOf(st) < 0) return;
+    if (ENTREVISTA_STAGES.indexOf(st) === -1) return;
     var k = dealId;
     if (entrevVisto[k]) return;
     entrevVisto[k] = 1;
@@ -608,181 +593,91 @@ function renderBarrasFallback(elId, linhas, campo, fmt){
   });
 }
 
-function makeChart(canvasId, config){
-  if (CHARTS[canvasId]) CHARTS[canvasId].destroy();
-  var ctx = $(canvasId);
-  if (!ctx) return null;
-  CHARTS[canvasId] = new Chart(ctx, config);
-  return CHARTS[canvasId];
-}
-
-/* Grafico 1: Barras horizontais - Entrevistas */
+/* Graficos 1 e 2: usam fallback direto (sem Chart.js) */
 function renderChartEntrevistas(linhas){
-  var el = $("peChartEntrevWrap");
-  if (!el || !HAS_CHARTJS) { renderBarrasFallback(el ? "peChartEntrevWrap" : "peChartEntrev", linhas, "entrevistas", function(v){ return nfInt.format(v); }); return; }
-  var dados = linhas.slice().sort(function(a,b){ return b.entrevistas - a.entrevistas; })
-    .filter(function(r){ return r.entrevistas > 0; }).slice(0, CFG.TOP_BARRAS);
-  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
-  el.innerHTML = '<canvas id="peCanvasEntrev" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
-  makeChart("peCanvasEntrev", {
-    type: "bar",
-    data: { labels: dados.map(function(r){ return r.nome; }),
-      datasets: [{ label: "Entrevistas", data: dados.map(function(r){ return r.entrevistas; }),
-        backgroundColor: "rgba(42,120,214,0.75)", borderColor: "#2a78d6", borderWidth: 1, borderRadius: 4, barPercentage: 0.7 }] },
-    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
-      animation: { duration: 600, easing: "easeOutQuart" },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: function(ctx){
-        var r = dados[ctx.dataIndex]; return r.equipe + "\n" + r.cotas + " cotas \u00B7 tx " + (r.entrevistas ? (r.txConv*100).toFixed(1)+"%" : "-"); } } } },
-      scales: { x: { grid: { color: "rgba(0,0,0,0.06)" } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
-      onClick: function(e, el){ if (el.length) mostrarDrillVendedor(dados[el[0].index]); } }
-  });
+  renderBarrasFallback("peChartEntrevWrap", linhas, "entrevistas", function(v){ return nfInt.format(v); });
+  renderBarrasFallback("peChartEntrev", linhas, "entrevistas", function(v){ return nfInt.format(v); });
 }
 
-/* Grafico 2: Barras horizontais - Faturamento */
 function renderChartFaturamento(linhas){
-  var el = $("peChartFatWrap");
-  if (!el || !HAS_CHARTJS) { renderBarrasFallback(el ? "peChartFatWrap" : "peChartFat", linhas, "faturamento", moneyShort); return; }
-  var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
-    .filter(function(r){ return r.faturamento > 0; }).slice(0, CFG.TOP_BARRAS);
-  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
-  el.innerHTML = '<canvas id="peCanvasFat" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
-  makeChart("peCanvasFat", {
-    type: "bar",
-    data: { labels: dados.map(function(r){ return r.nome; }),
-      datasets: [{ label: "Faturamento", data: dados.map(function(r){ return r.faturamento; }),
-        backgroundColor: "rgba(235,104,52,0.75)", borderColor: "#eb6834", borderWidth: 1, borderRadius: 4, barPercentage: 0.7 }] },
-    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
-      animation: { duration: 600, easing: "easeOutQuart" },
-      plugins: { legend: { display: false }, tooltip: { callbacks: {
-        label: function(ctx){ return "  " + money(ctx.raw); },
-        afterLabel: function(ctx){ var r = dados[ctx.dataIndex]; return r.equipe + "\n" + r.cotas + " cotas \u00B7 ticket " + (r.cotas ? money(r.ticket) : "-"); } } } },
-      scales: { x: { grid: { color: "rgba(0,0,0,0.06)" }, ticks: { callback: function(v){ return moneyShort(v); } } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
-      onClick: function(e, el){ if (el.length) mostrarDrillVendedor(dados[el[0].index]); } }
-  });
+  renderBarrasFallback("peChartFatWrap", linhas, "faturamento", moneyShort);
+  renderBarrasFallback("peChartFat", linhas, "faturamento", moneyShort);
 }
 
-/* Grafico 3: Tendencia diaria (faturamento acum + leads + entrevistas) */
+/* Grafico 3: Tendencia — usa mesmo padrao barRow que ja funciona */
 function renderChartTendencia(porDia, de, ate){
-  var el = $("peChartTrendWrap");
-  if (!el || !HAS_CHARTJS) return;
+  var el = $("peSvgTrend"); if (!el) return;
   var dias = [], dAtual = new Date(de + "T00:00:00"), dFim = new Date(ate + "T00:00:00");
   while (dAtual <= dFim) { dias.push(iso(dAtual)); dAtual.setDate(dAtual.getDate() + 1); }
-  var fatAcum = 0, dataFatAcum = [], dataLeads = [], dataEntrev = [];
-  dias.forEach(function(dia){
-    var d = porDia[dia] || { fat: 0, cotas: 0, leads: 0, entrevistas: 0 };
-    fatAcum += d.fat; dataFatAcum.push(fatAcum);
-    dataLeads.push(d.leads); dataEntrev.push(d.entrevistas || 0);
+  if (!dias.length) { el.innerHTML = ""; return; }
+  /* agrupa por semana */
+  var semanas = [], acum = { fat:0, leads:0, lbl:"" };
+  dias.forEach(function(dia, i){
+    var d = porDia[dia] || { fat:0, leads:0 };
+    acum.fat += d.fat; acum.leads += d.leads;
+    if (!acum.lbl) acum.lbl = dia.substring(5).replace("-","/");
+    if ((i+1) % 7 === 0 || i === dias.length - 1) { semanas.push(acum); acum = { fat:0, leads:0, lbl:"" }; }
   });
-  var labels = dias.map(function(d){ return d.substring(5).replace("-","/"); });
-  el.innerHTML = '<canvas id="peCanvasTrend" height="260"></canvas>';
-  makeChart("peCanvasTrend", {
-    type: "line",
-    data: { labels: labels, datasets: [
-      { label: "Fat. acumulado", data: dataFatAcum, borderColor: "#2a78d6", backgroundColor: "rgba(42,120,214,0.06)", fill: true, tension: 0.3, pointRadius: dias.length > 45 ? 0 : 2, yAxisID: "y" },
-      { label: "Leads/dia", data: dataLeads, borderColor: "#1baf7a", fill: false, tension: 0.3, pointRadius: dias.length > 45 ? 0 : 2, yAxisID: "y1" },
-      { label: "Entrev./dia", data: dataEntrev, borderColor: "#eb6834", fill: false, tension: 0.3, pointRadius: dias.length > 45 ? 0 : 2, borderDash: [4,3], yAxisID: "y1" }
-    ] },
-    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
-      animation: { duration: 800 },
-      plugins: { legend: { position: "top", labels: { font: { size: 11 }, usePointStyle: true } },
-        tooltip: { callbacks: { label: function(ctx){ return ctx.datasetIndex === 0 ? "  Acum: " + money(ctx.raw) : "  " + ctx.dataset.label + ": " + ctx.raw; } } } },
-      scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 45 } },
-        y: { position: "left", grid: { color: "rgba(0,0,0,0.05)" }, ticks: { callback: function(v){ return moneyShort(v); } }, title: { display: true, text: "Fat. acum." } },
-        y1: { position: "right", grid: { display: false }, title: { display: true, text: "Qtd/dia" } }
-      } }
+  var maxFat = Math.max.apply(null, semanas.map(function(s){ return s.fat; })) || 1;
+  el.innerHTML = "";
+  semanas.forEach(function(s){
+    var row = document.createElement("div"); row.className = "barRow";
+    row.innerHTML = '<div class="barName">' + s.lbl + '</div>' +
+      '<div class="barTrack"><div class="barFill" style="width:' + Math.max(0.5, s.fat * 100 / maxFat).toFixed(1) + '%"></div></div>' +
+      '<div class="barVal">' + moneyShort(s.fat) + '</div>';
+    el.appendChild(row);
   });
 }
 
-/* Grafico 4: Drill-down por equipe */
+/* Grafico 4: Equipe — usa barRow */
 function renderChartDrillEquipe(linhas){
-  var el = $("peChartDrillWrap");
-  if (!el || !HAS_CHARTJS) return;
+  var el = $("peSvgDrill"); if (!el) return;
   var porEq = {};
   linhas.forEach(function(r){
-    if (!porEq[r.equipe]) porEq[r.equipe] = { cotas: 0, entrevistas: 0, faturamento: 0, leads: 0, vcAgendadas: 0 };
-    var e = porEq[r.equipe];
-    e.cotas += r.cotas; e.entrevistas += r.entrevistas; e.faturamento += r.faturamento;
-    e.leads += r.leads; e.vcAgendadas += r.vcAgendadas;
+    if (!porEq[r.equipe]) porEq[r.equipe] = { cotas:0, faturamento:0 };
+    porEq[r.equipe].cotas += r.cotas; porEq[r.equipe].faturamento += r.faturamento;
   });
   var eqs = Object.keys(porEq).sort(function(a,b){ return porEq[b].faturamento - porEq[a].faturamento; });
-  if (!eqs.length) return;
-  el.innerHTML = '<canvas id="peCanvasDrill" height="300"></canvas>';
-  makeChart("peCanvasDrill", {
-    type: "bar",
-    data: { labels: eqs, datasets: [
-      { label: "Faturamento", data: eqs.map(function(e){ return porEq[e].faturamento; }), backgroundColor: "rgba(42,120,214,0.7)", borderRadius: 4, yAxisID: "y" },
-      { label: "Cotas", data: eqs.map(function(e){ return porEq[e].cotas; }), backgroundColor: "rgba(235,104,52,0.7)", borderRadius: 4, yAxisID: "y1" },
-      { label: "Entrevistas", data: eqs.map(function(e){ return porEq[e].entrevistas; }), backgroundColor: "rgba(27,175,122,0.7)", borderRadius: 4, yAxisID: "y1" }
-    ] },
-    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
-      plugins: { legend: { position: "top", labels: { font: { size: 11 }, usePointStyle: true } } },
-      scales: { x: { grid: { display: false } },
-        y: { position: "left", grid: { color: "rgba(0,0,0,0.05)" }, ticks: { callback: function(v){ return moneyShort(v); } }, title: { display: true, text: "Fat." } },
-        y1: { position: "right", grid: { display: false }, title: { display: true, text: "Qtd" } } },
-      onClick: function(evt, elements){ if (elements.length) { $("peEquipe").value = eqs[elements[0].index]; pintar(); } } }
+  if (!eqs.length) { el.innerHTML = ""; return; }
+  var max = porEq[eqs[0]].faturamento || 1;
+  el.innerHTML = "";
+  eqs.forEach(function(eq){
+    var e = porEq[eq];
+    var row = document.createElement("div"); row.className = "barRow";
+    row.innerHTML = '<div class="barName">' + esc(eq) + '</div>' +
+      '<div class="barTrack"><div class="barFill" style="width:' + Math.max(0.5, e.faturamento * 100 / max).toFixed(1) + '%;background:var(--series-2)"></div></div>' +
+      '<div class="barVal">' + moneyShort(e.faturamento) + ' (' + e.cotas + ')</div>';
+    el.appendChild(row);
   });
 }
 
-/* Grafico 5: Ranking animado Top 10 */
+/* Grafico 5: Ranking — usa barRow */
 function renderChartRanking(linhas){
-  var el = $("peChartRankWrap");
-  if (!el || !HAS_CHARTJS) return;
+  var el = $("peSvgRank"); if (!el) return;
   var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
     .filter(function(r){ return r.faturamento > 0; }).slice(0, 10);
-  if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados para ranking.</div>'; return; }
-  var cores = dados.map(function(r, i){ var idx = DIM.equipes.indexOf(r.equipe); return corEquipe(idx >= 0 ? idx : i); });
-  if (el) el.innerHTML = '<canvas id="peCanvasRank" height="' + Math.max(250, dados.length * 36) + '"></canvas>';
-  makeChart("peCanvasRank", {
-    type: "bar",
-    data: { labels: dados.map(function(r, i){ return (i+1) + "\u00BA " + r.nome; }),
-      datasets: [{ label: "Faturamento", data: dados.map(function(r){ return r.faturamento; }),
-        backgroundColor: cores.map(function(c){ return c + "cc"; }), borderColor: cores, borderWidth: 2, borderRadius: 6, barPercentage: 0.75 }] },
-    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
-      animation: { duration: 1000, easing: "easeOutBounce", delay: function(ctx){ return ctx.dataIndex * 60; } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: {
-        label: function(ctx){ return "  " + money(ctx.raw); },
-        afterLabel: function(ctx){ var r = dados[ctx.dataIndex]; return r.equipe + " \u00B7 " + r.cotas + " cotas"; } } } },
-      scales: { x: { grid: { color: "rgba(0,0,0,0.04)" }, ticks: { callback: function(v){ return moneyShort(v); } } },
-        y: { grid: { display: false }, ticks: { font: { size: 11, weight: "bold" } } } } }
+  if (!dados.length) { el.innerHTML = ""; return; }
+  var max = dados[0].faturamento || 1;
+  el.innerHTML = "";
+  dados.forEach(function(r, i){
+    var row = document.createElement("div"); row.className = "barRow";
+    row.innerHTML = '<div class="barName">' + (i+1) + '. ' + esc(r.nome) + '</div>' +
+      '<div class="barTrack"><div class="barFill" style="width:' + Math.max(0.5, r.faturamento * 100 / max).toFixed(1) + '%;background:var(--series-3)"></div></div>' +
+      '<div class="barVal">' + moneyShort(r.faturamento) + '</div>';
+    el.appendChild(row);
   });
 }
 
-/* Grafico 6 (NOVO): Radar comparativo de equipes */
-function renderChartRadar(linhas){
-  var radarEl = $("peChartRadarWrap");
-  if (!radarEl || !HAS_CHARTJS) return;
-  var porEq = {};
-  linhas.forEach(function(r){
-    if (!porEq[r.equipe]) porEq[r.equipe] = { entrevistas:0, cotas:0, leads:0, indicacoes:0, vcAgendadas:0 };
-    var e = porEq[r.equipe];
-    e.entrevistas += r.entrevistas; e.cotas += r.cotas; e.leads += r.leads;
-    e.indicacoes += r.indicacoes; e.vcAgendadas += r.vcAgendadas;
-  });
-  var eqs = Object.keys(porEq).filter(function(e){ return e !== "(sem equipe)"; }).slice(0, 6);
-  if (eqs.length < 2) { radarEl.innerHTML = ''; return; }
-  radarEl.innerHTML = '<canvas id="peCanvasRadar" height="300"></canvas>';
-  var datasets = eqs.map(function(eq, i){
-    var e = porEq[eq];
-    return { label: eq, data: [e.leads, e.vcAgendadas, e.entrevistas, e.cotas, e.indicacoes],
-      borderColor: PALETTE[i % PALETTE.length], backgroundColor: PALETTE[i % PALETTE.length] + "22",
-      pointBackgroundColor: PALETTE[i % PALETTE.length], fill: true };
-  });
-  makeChart("peCanvasRadar", {
-    type: "radar",
-    data: { labels: ["Leads", "V.C. Agend.", "Entrevistas", "Cotas", "Indicacoes"], datasets: datasets },
-    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
-      plugins: { legend: { position: "top", labels: { font: { size: 11 } } } },
-      scales: { r: { beginAtZero: true, ticks: { font: { size: 10 } } } } }
-  });
-}
+/* Grafico 6: Radar — omitido (requer Chart.js), silencioso */
+function renderChartRadar(linhas){ return; }
 
 /* Modal drill vendedor */
 function mostrarDrillVendedor(v){
   var el = $("peDrillModal"); if (!el) return;
   el.style.display = "flex";
-  $("peDrillTitle").textContent = v.nome + " (" + v.equipe + ")";
-  $("peDrillBody").innerHTML = '<div class="tiles">' +
+  var titleEl = $("peDrillTitle"); if (titleEl) titleEl.textContent = v.nome + " (" + v.equipe + ")";
+  var bodyEl = $("peDrillBody"); if (!bodyEl) return;
+  bodyEl.innerHTML = '<div class="tiles">' +
     tile("Leads", nfInt.format(v.leads), nfDec.format(v.mediaLeadDia || 0) + "/dia") +
     tile("V.C. agendadas", nfInt.format(v.vcAgendadas), "") +
     tile("Entrevistas", nfInt.format(v.entrevistas), nfDec.format(v.mediaVcDia || 0) + "/dia util") +
@@ -890,7 +785,7 @@ function aplicarFiltros(linhas){
   var eq = $("peEquipe").value, q = ($("peBusca").value || "").trim().toLowerCase();
   return linhas.filter(function(r){
     if (eq && r.equipe !== eq) return false;
-    if (q && r.nome.toLowerCase().indexOf(q) < 0) return false;
+    if (q && r.nome.toLowerCase().indexOf(q) === -1) return false;
     return true;
   });
 }
@@ -941,7 +836,7 @@ function pintar(){
     " Demais numeros vem do funil e historico de etapas.";
 
   setStatus("Periodo " + LAST.de.split("-").reverse().join("/") + " a " + LAST.ate.split("-").reverse().join("/") +
-    " \u00B7 " + linhas.length + " vendedores \u00B7 " + LAST.dias + " dias uteis");
+    " - " + linhas.length + " vendedores - " + LAST.dias + " dias uteis");
 }
 
 function atualizar(){
@@ -956,7 +851,7 @@ function atualizar(){
       LAST = calcular(dados, de, ate);
       pintar();
       var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      setStatus($("peStatus").textContent + " \u00B7 " + elapsed + "s");
+      setStatus($("peStatus").textContent + " - " + elapsed + "s");
     })
     .catch(function(e){ setStatus("Erro: " + e.message); console.error(e); })
     .then(function(){ $("peGo").disabled = false; });
@@ -1032,4 +927,6 @@ setPeriodo("mes");
 carregarDimensoes().then(atualizar).catch(function(e){ setStatus("ERRO: " + e.message); console.error(e); });
 
 })();
+
+
 
