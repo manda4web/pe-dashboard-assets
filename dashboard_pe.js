@@ -1,1 +1,973 @@
-!function(){"use strict";var e={WEBHOOK:"https://portoelite.bitrix24.com.br/rest/10/lw0trhq6laln09cz/",CATEGORY:0,SPA_ID:1042,SPA_AGENTE:"ufCrm10_1767663044",SPA_EQUIPE:"ufCrm10_1767663090",IBLOCK_EQUIPES:28,META_PADRAO:5e6,METAS:{},TOP_BARRAS:14,STAGE:{VC:"EXECUTING",BOLO:"UC_JABGE5",VALOR:"UC_8Y2T7I",PROP:"UC_N8IW9L",WON:"WON"},UF:{TIPO_VENDA:"UF_CRM_1784577684162",TIPO_VENDA_INDICACAO:"694",IND:"UF_CRM_69740ED137379",ENTREV:"UF_CRM_69740ED140724",LIG:"UF_CRM_69740ED149B72",MSG:"UF_CRM_69740ED15392A"}},t=[e.STAGE.VALOR,e.STAGE.PROP,e.STAGE.WON],n=[e.STAGE.VC,e.STAGE.BOLO,e.STAGE.VALOR,e.STAGE.PROP,e.STAGE.WON];function a(e,t){var n=[];return Object.keys(e).forEach(function(o){var r=e[o],s=t?t+"["+o+"]":o;null!=r&&(Array.isArray(r)?r.forEach(function(e,t){var o=s+"["+t+"]";null!==e&&"object"==typeof e?n.push(a(e,o)):n.push(encodeURIComponent(o)+"="+encodeURIComponent(e))}):"object"==typeof r?n.push(a(r,s)):n.push(encodeURIComponent(s)+"="+encodeURIComponent(r)))}),n.filter(Boolean).join("&")}function o(t,n){var o=e.WEBHOOK+t+".json",r=a(n||{});return fetch(o,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:r}).then(function(e){if(!e.ok)throw new Error(t+" HTTP "+e.status);return e.json()}).then(function(e){if(e.error)throw new Error(t+": "+(e.error_description||e.error));return e})}function r(e){var t={};return e.forEach(function(e,n){t["c"+n]=e.method+"?"+a(e.params)}),o("batch",{halt:0,cmd:t}).then(function(t){var n=t.result&&t.result.result||{},a=t.result&&t.result.result_error||{};return e.map(function(e,t){if(a["c"+t])throw new Error(e.method+": "+JSON.stringify(a["c"+t]));return n["c"+t]})})}function s(e,t,n,a){a=a||50,n=n||function(e){return e||[]};var s=Object.assign({},t,{start:0});return o(e,s).then(function(o){for(var s=n(o.result).slice(),i="number"==typeof o.total?o.total:s.length,c=[],u=a;u<i;u+=a)c.push(u);for(var d=[],f=0;f<c.length;f+=50)d.push(c.slice(f,f+50));return d.reduce(function(a,o){return a.then(function(){return r(o.map(function(n){return{method:e,params:Object.assign({},t,{start:n})}})).then(function(e){e.forEach(function(e){e&&(s=s.concat(n(e)))})})})},Promise.resolve()).then(function(){return s})})}var i=function(e){return document.getElementById(e)},c=new Intl.NumberFormat("pt-BR"),u=new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0}),d=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});function f(e){return u.format(Math.round(e||0))}function l(e){e=e||0;return Math.abs(e)>=1e6?"R$ "+d.format(e/1e6)+" mi":Math.abs(e)>=1e3?"R$ "+c.format(Math.round(e/1e3))+" mil":f(e)}function v(e,t){return t?d.format(100*e/t)+"%":"-"}function m(e){return e.getFullYear()+"-"+String(e.getMonth()+1).padStart(2,"0")+"-"+String(e.getDate()).padStart(2,"0")}function p(e){return String(null==e?"":e).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}function E(e,t){var n=new Date(e+"T00:00:00"),a=new Date(t+"T00:00:00"),o=new Date;o.setHours(0,0,0,0),a>o&&(a=o);for(var r=0,s=new Date(n);s<=a;s.setDate(s.getDate()+1)){var i=s.getDay();0!==i&&6!==i&&r++}return r||1}var h=i("peTip");function g(e,t){e.addEventListener("mouseenter",function(){h.innerHTML=t,h.style.opacity=1}),e.addEventListener("mousemove",function(e){var t=Math.min(e.clientX+14,window.innerWidth-300);h.style.left=t+"px",h.style.top=Math.max(8,e.clientY-12)+"px"}),e.addEventListener("mouseleave",function(){h.style.opacity=0})}function A(e){i("peStatus").textContent=e}var T={users:{},agenteEquipe:{},equipes:[]},C=null;function S(n,a,o){var r={};function s(e){return e&&"undefined"!==e&&"null"!==e||(e="0"),r[e]||(r[e]=function(e){var t=T.users[e]||{nome:"Usuario #"+e,cargo:""};return{id:e,nome:t.nome,cargo:t.cargo,equipe:T.agenteEquipe[e]||"(sem equipe)",leads:0,vcAgendadas:0,entrevistas:0,bolo:0,valorizados:0,propostas:0,indicacoes:0,cotas:0,faturamento:0,mensagens:0,ligacoes:0}}(e)),r[e]}n.leads.forEach(function(t){var n=s(String(t.ASSIGNED_BY_ID));n.leads++,"RECOMMENDATION"!==t.SOURCE_ID&&String(t[e.UF.TIPO_VENDA]||"")!==e.UF.TIPO_VENDA_INDICACAO||n.indicacoes++,n.mensagens+=parseFloat(t[e.UF.MSG])||0,n.ligacoes+=parseFloat(t[e.UF.LIG])||0}),n.vendas.forEach(function(e){var t=s(String(e.ASSIGNED_BY_ID));t.cotas++,t.faturamento+=parseFloat(e.OPPORTUNITY)||0});var i={vc:{},bolo:{},valor:{},prop:{},entrev:{}};n.hist.forEach(function(a){var o=String(a.OWNER_ID),r=n.dono[o];if(r){var c=s(r),u=a.STAGE_ID,d=r+"|"+o;u!==e.STAGE.VC||i.vc[d]||(i.vc[d]=1,c.vcAgendadas++),u!==e.STAGE.BOLO||i.bolo[d]||(i.bolo[d]=1,c.bolo++),u!==e.STAGE.VALOR||i.valor[d]||(i.valor[d]=1,c.valorizados++),u!==e.STAGE.PROP||i.prop[d]||(i.prop[d]=1,c.propostas++),t.indexOf(u)>=0&&!i.entrev[d]&&(i.entrev[d]=1,c.entrevistas++)}}),n.vendas.forEach(function(e){var t=String(e.ASSIGNED_BY_ID),n=t+"|"+String(e.ID);i.entrev[n]||(i.entrev[n]=1,s(t).entrevistas++)});var c=Object.keys(r).map(function(e){return r[e]}).filter(function(e){return e.leads||e.cotas||e.entrevistas||e.vcAgendadas||e.bolo});return c.forEach(function(e){e.ticket=e.cotas?e.faturamento/e.cotas:0,e.txConv=e.entrevistas?e.cotas/e.entrevistas:0,e.venda10vc=10*e.txConv,e.convLead=e.leads?e.cotas/e.leads:0,e.vcPorLead=e.leads?e.entrevistas/e.leads:0,e.entrevPorVenda=e.cotas?e.entrevistas/e.cotas:0,e.noShow=e.vcAgendadas?e.bolo/e.vcAgendadas:0}),{linhas:c,de:a,ate:o,dias:E(a,o)}}function D(e){var t={leads:0,vcAgendadas:0,entrevistas:0,bolo:0,valorizados:0,propostas:0,indicacoes:0,cotas:0,faturamento:0,mensagens:0,ligacoes:0};return e.forEach(function(e){Object.keys(t).forEach(function(n){t[n]+=e[n]||0})}),t.ticket=t.cotas?t.faturamento/t.cotas:0,t.txConv=t.entrevistas?t.cotas/t.entrevistas:0,t.venda10vc=10*t.txConv,t.convLead=t.leads?t.cotas/t.leads:0,t.vcPorLead=t.leads?t.entrevistas/t.leads:0,t.entrevPorVenda=t.cotas?t.entrevistas/t.cotas:0,t.noShow=t.vcAgendadas?t.bolo/t.vcAgendadas:0,t}function I(e,t,n){return'<div class="card tile"><div class="label">'+p(e)+'</div><div class="value">'+t+'</div><div class="foot">'+(n||"&nbsp;")+"</div></div>"}function b(t,n,a,o,r){var s=i(t),c=n.slice().sort(function(e,t){return t[a]-e[a]}).filter(function(e){return e[a]>0}).slice(0,e.TOP_BARRAS);if(c.length){var u=c[0][a]||1;s.innerHTML="",c.forEach(function(e){var t=document.createElement("div");t.className="barRow",t.innerHTML='<div class="barName" title="'+p(e.nome)+'">'+p(e.nome)+'</div><div class="barTrack"><div class="barFill" style="width:'+Math.max(.6,100*e[a]/u).toFixed(2)+'%"></div></div><div class="barVal">'+o(e[a])+"</div>",g(t,r(e)),s.appendChild(t)})}else s.innerHTML='<div class="empty">Sem dados no periodo selecionado.</div>'}var k=[{k:"nome",t:"Vendedor",txt:!0,f:function(e){return p(e.nome)}},{k:"equipe",t:"Equipe",txt:!0,f:function(e){return'<span class="pill">'+p(e.equipe)+"</span>"}},{k:"leads",t:"Leads",f:function(e){return c.format(e.leads)},sum:"int"},{k:"vcAgendadas",t:"V.C. agend.",f:function(e){return c.format(e.vcAgendadas)},sum:"int"},{k:"entrevistas",t:"Entrevistas",f:function(e){return c.format(e.entrevistas)},sum:"int"},{k:"bolo",t:"Deu bolo",f:function(e){return c.format(e.bolo)},sum:"int"},{k:"valorizados",t:"Valorizados",f:function(e){return c.format(e.valorizados)},sum:"int"},{k:"indicacoes",t:"Indicacoes",f:function(e){return c.format(e.indicacoes)},sum:"int"},{k:"cotas",t:"Cotas vend.",f:function(e){return c.format(e.cotas)},sum:"int"},{k:"faturamento",t:"Faturamento",f:function(e){return f(e.faturamento)},sum:"money"},{k:"ticket",t:"Ticket medio",f:function(e){return e.cotas?f(e.ticket):"-"},sum:"calcTicket"},{k:"txConv",t:"Tx. conversao",f:function(e){return e.entrevistas?d.format(100*e.txConv)+"%":"-"},sum:"calcTxConv"},{k:"venda10vc",t:"Venda/10 V.C.",f:function(e){return e.entrevistas?d.format(e.venda10vc):"-"},sum:"calcV10"},{k:"convLead",t:"% conv. lead",f:function(e){return e.leads?d.format(100*e.convLead)+"%":"-"},sum:"calcConvLead"},{k:"vcPorLead",t:"V.C./lead",f:function(e){return e.leads?d.format(100*e.vcPorLead)+"%":"-"},sum:"calcVcLead"}],O=[{k:"nome",t:"Supervisor",txt:!0,f:function(e){return p(e.nome)}},{k:"equipe",t:"Equipe",txt:!0,f:function(e){return'<span class="pill">'+p(e.equipe)+"</span>"}},{k:"entrevistas",t:"Entrevistas feitas",f:function(e){return c.format(e.entrevistas)},sum:"int"},{k:"cotas",t:"Cotas vendidas",f:function(e){return c.format(e.cotas)},sum:"int"},{k:"faturamento",t:"Total vendido",f:function(e){return f(e.faturamento)},sum:"money"},{k:"ticket",t:"Ticket medio",f:function(e){return e.cotas?f(e.ticket):"-"},sum:"calcTicket"},{k:"entrevPorVenda",t:"Entrev. p/ vender",f:function(e){return e.cotas?d.format(e.entrevPorVenda):"-"},sum:"calcEpV"},{k:"valorizados",t:"Valorizados",f:function(e){return c.format(e.valorizados)},sum:"int"},{k:"txConv",t:"Tx. conversao",f:function(e){return e.entrevistas?d.format(100*e.txConv)+"%":"-"},sum:"calcTxConv"}],_=[{k:"nome",t:"Equipe",txt:!0,f:function(e){return"<b>"+p(e.nome)+"</b>"}},{k:"vendedores",t:"Vendedores",f:function(e){return c.format(e.vendedores)},sum:"int"},{k:"leads",t:"Leads",f:function(e){return c.format(e.leads)},sum:"int"},{k:"vcAgendadas",t:"V.C. agend.",f:function(e){return c.format(e.vcAgendadas)},sum:"int"},{k:"entrevistas",t:"Entrevistas",f:function(e){return c.format(e.entrevistas)},sum:"int"},{k:"cotas",t:"Cotas vend.",f:function(e){return c.format(e.cotas)},sum:"int"},{k:"faturamento",t:"Faturamento",f:function(e){return f(e.faturamento)},sum:"money"},{k:"ticket",t:"Ticket medio",f:function(e){return e.cotas?f(e.ticket):"-"},sum:"calcTicket"},{k:"txConv",t:"Tx. conversao",f:function(e){return e.entrevistas?d.format(100*e.txConv)+"%":"-"},sum:"calcTxConv"},{k:"convLead",t:"% conv. lead",f:function(e){return e.leads?d.format(100*e.convLead)+"%":"-"},sum:"calcConvLead"}],L={};function x(e,t,n,a){var o=i(e),r=L[e]||(L[e]={k:a,dir:"desc"}),s=n.slice().sort(function(e,t){var n,a=e[r.k],o=t[r.k];return n="string"==typeof a||"string"==typeof o?String(a).localeCompare(String(o),"pt-BR"):(a||0)-(o||0),"asc"===r.dir?n:-n});o.tHead.innerHTML="<tr>"+t.map(function(e){return'<th class="'+(e.txt?"txt":"")+'"'+(e.k===r.k?' data-dir="'+r.dir+'"':"")+' data-k="'+e.k+'">'+p(e.t)+"</th>"}).join("")+"</tr>",o.tBodies[0].innerHTML=s.length?s.map(function(e){return"<tr>"+t.map(function(t){return'<td class="'+(t.txt?"txt":"")+'">'+t.f(e)+"</td>"}).join("")+"</tr>"}).join(""):'<tr><td class="txt" colspan="'+t.length+'"><div class="empty">Sem dados no periodo.</div></td></tr>';var u=D(s);u.vendedores=s.reduce(function(e,t){return e+(t.vendedores||1)},0);var l={int:function(e){return c.format(u[e.k]||0)},money:function(e){return f(u[e.k]||0)},calcTicket:function(){return u.cotas?f(u.ticket):"-"},calcTxConv:function(){return u.entrevistas?d.format(100*u.txConv)+"%":"-"},calcV10:function(){return u.entrevistas?d.format(u.venda10vc):"-"},calcConvLead:function(){return u.leads?d.format(100*u.convLead)+"%":"-"},calcVcLead:function(){return u.leads?d.format(100*u.vcPorLead)+"%":"-"},calcEpV:function(){return u.cotas?d.format(u.entrevPorVenda):"-"}};o.tFoot.innerHTML="<tr>"+t.map(function(e,t){if(0===t)return'<td class="txt">TOTAL ('+s.length+")</td>";var n=e.sum&&l[e.sum];return'<td class="'+(e.txt?"txt":"")+'">'+(n?n(e):"")+"</td>"}).join("")+"</tr>",o.tHead.querySelectorAll("th").forEach(function(o){o.onclick=function(){var s=o.getAttribute("data-k");r.k===s?r.dir="desc"===r.dir?"asc":"desc":(r.k=s,r.dir="desc"),x(e,t,n,a)}})}function R(e){var t=i("peEquipe").value,n=(i("peBusca").value||"").trim().toLowerCase();return e.filter(function(e){return(!t||e.equipe===t)&&!(n&&e.nome.toLowerCase().indexOf(n)<0)})}function P(){if(C){var t=R(C.linhas),n=D(t),a=i("peEquipe").value,o=a&&e.METAS[a]||e.META_PADRAO;!function(e,t){i("peHero").textContent=f(e.faturamento),i("peHeroNote").innerHTML=c.format(e.cotas)+" cotas &middot; ticket medio "+l(e.ticket);var n=t?100*e.faturamento/t:0,a=i("peMeterFill");a.style.width=Math.min(100,n).toFixed(1)+"%",a.style.background=n>=100?"var(--good)":"var(--series-1)",i("peMetaTxt").textContent="Meta "+l(t),i("peMetaPct").textContent=d.format(n)+"% atingido"}(n,o),function(e,t){i("peTiles").innerHTML=I("Cotas vendidas",c.format(e.cotas),"negocios em Vendido")+I("Ticket medio",l(e.ticket),"faturamento / cotas")+I("Leads recebidos",c.format(e.leads),"criados no periodo")+I("V.C. agendadas",c.format(e.vcAgendadas),"passaram por Videochamada")+I("Entrevistas",c.format(e.entrevistas),d.format(e.entrevistas/t)+" por dia util")+I("Taxa de conversao",e.entrevistas?d.format(100*e.txConv)+"%":"-","cotas / entrevistas")}(n,C.dias),function(e,t,n,a){i("peEquipeTitle").textContent=n,i("peEquipeTiles").innerHTML=I("Meta do periodo",l(a),"configuravel em CFG.METAS")+I("Vendas",l(e.faturamento),c.format(e.cotas)+" cotas")+I("Taxa de conversao",e.entrevistas?d.format(100*e.txConv)+"%":"-","cotas / entrevistas")+I("Entrevistas p/ vender",e.cotas?d.format(e.entrevPorVenda):"-","entrevistas / cota")+I("Ticket medio",l(e.ticket),"por cota vendida")+I("Media de V.C. / dia",d.format(e.entrevistas/t),t+" dias uteis")+I("Conv. por lead recebido",v(e.cotas,e.leads),c.format(e.leads)+" leads")+I("Videochamada por lead",v(e.entrevistas,e.leads),"entrevistas / leads")+I("Deu bolo (no-show)",v(e.bolo,e.vcAgendadas),c.format(e.bolo)+" de "+c.format(e.vcAgendadas)+" agendadas")+I("Valorizados",c.format(e.valorizados),"passaram por Valorizado")}(n,C.dias,a?"Equipe: "+a:"Indicadores consolidados (todas as equipes)",o),function(e){var t=[{n:"Leads recebidos",v:e.leads,c:"var(--ord-1)"},{n:"V.C. agendadas",v:e.vcAgendadas,c:"var(--ord-2)"},{n:"Entrevistas",v:e.entrevistas,c:"var(--ord-3)"},{n:"Propostas feitas",v:e.propostas,c:"var(--ord-4)"},{n:"Cotas vendidas",v:e.cotas,c:"var(--ord-5)"}],n=Math.max.apply(null,t.map(function(e){return e.v}))||1,a=e.leads||n,o=i("peFunnel");o.innerHTML="",t.forEach(function(e,r){var s=document.createElement("div");s.className="fRow",s.innerHTML='<div class="fName">'+p(e.n)+'</div><div><div class="fBar" style="width:'+Math.max(.6,100*e.v/n).toFixed(2)+"%;background:"+e.c+'"></div></div><div class="fVal">'+c.format(e.v)+"<small>"+v(e.v,a)+"</small></div>";var i=r>0?t[r-1]:null;g(s,"<b>"+p(e.n)+"</b>"+c.format(e.v)+" no periodo<br>"+v(e.v,a)+" dos leads recebidos"+(i?"<br>"+v(e.v,i.v)+" da etapa anterior ("+p(i.n)+")":"")),o.appendChild(s)})}(n),b("peChartEntrev",t,"entrevistas",function(e){return c.format(e)},function(e){return"<b>"+p(e.nome)+"</b>"+p(e.equipe)+"<br>"+c.format(e.entrevistas)+" entrevistas &middot; "+c.format(e.vcAgendadas)+" agendadas<br>"+c.format(e.cotas)+" cotas &middot; tx. conversao "+(e.entrevistas?d.format(100*e.txConv)+"%":"-")}),b("peChartFat",t,"faturamento",l,function(e){return"<b>"+p(e.nome)+"</b>"+p(e.equipe)+"<br>"+f(e.faturamento)+" em "+c.format(e.cotas)+" cotas<br>Ticket medio "+(e.cotas?f(e.ticket):"-")}),x("peTblVend",k,t,"faturamento");var r={};t.forEach(function(e){var t=r[e.equipe]||(r[e.equipe]={nome:e.equipe,vendedores:0,leads:0,vcAgendadas:0,entrevistas:0,bolo:0,valorizados:0,propostas:0,indicacoes:0,cotas:0,faturamento:0,mensagens:0,ligacoes:0});t.vendedores++,["leads","vcAgendadas","entrevistas","bolo","valorizados","propostas","indicacoes","cotas","faturamento","mensagens","ligacoes"].forEach(function(n){t[n]+=e[n]||0})});var s=Object.keys(r).map(function(e){var t=r[e];return t.ticket=t.cotas?t.faturamento/t.cotas:0,t.txConv=t.entrevistas?t.cotas/t.entrevistas:0,t.convLead=t.leads?t.cotas/t.leads:0,t});x("peTblEq",_,s,"faturamento");var u=t.filter(function(e){return/supervisor/i.test(e.cargo||"")});x("peTblSup",O,u,"faturamento");var m=C.linhas.some(function(e){return e.mensagens>0||e.ligacoes>0});i("peAviso").innerHTML="<b>Sobre Mensagens e Ligacoes:</b> este webhook nao tem permissao de telefonia (<code>telephony</code>) nem metodo REST para listar sessoes de canais abertos, entao "+(m?"as colunas usam os campos manuais do relatorio diario do negocio.":"esses dois indicadores <b>nao aparecem</b> aqui. Os campos manuais do relatorio diario (<i>Mensagens</i>, <i>Ligacoes</i>) estao praticamente vazios no CRM. Para exibi-los: (a) passe a preencher esses campos nos negocios, ou (b) libere o escopo <code>telephony</code> no webhook e me avise que eu somo as chamadas reais.")+" Os demais numeros vem do funil e do historico de etapas.",A("Periodo "+C.de.split("-").reverse().join("/")+" a "+C.ate.split("-").reverse().join("/")+" · "+t.length+" vendedores · "+C.dias+" dias uteis")}}function M(){var t=i("peDe").value,a=i("peAte").value;t&&a?t>a?A("A data inicial e maior que a final."):(i("peGo").disabled=!0,function(t,a){var o=t+" 00:00:00",i=a+" 23:59:59",u=["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE",e.UF.TIPO_VENDA,e.UF.IND,e.UF.ENTREV,e.UF.LIG,e.UF.MSG];return A("Buscando negocios do periodo..."),Promise.all([s("crm.deal.list",{filter:{CATEGORY_ID:e.CATEGORY,">=DATE_CREATE":o,"<=DATE_CREATE":i},select:u,order:{ID:"ASC"}}),s("crm.deal.list",{filter:{CATEGORY_ID:e.CATEGORY,STAGE_SEMANTIC_ID:"S",">=CLOSEDATE":o,"<=CLOSEDATE":i},select:["ID","ASSIGNED_BY_ID","OPPORTUNITY","CLOSEDATE"],order:{ID:"ASC"}}),s("crm.stagehistory.list",{entityTypeId:2,filter:{CATEGORY_ID:e.CATEGORY,"@STAGE_ID":n,">=CREATED_TIME":o,"<=CREATED_TIME":i},select:["ID","OWNER_ID","CREATED_TIME","STAGE_ID"],order:{ID:"ASC"}},function(e){return e&&e.items||[]})]).then(function(e){var t=e[0],n=e[1],a=e[2],o={};t.forEach(function(e){o[String(e.ID)]=String(e.ASSIGNED_BY_ID)}),n.forEach(function(e){o[String(e.ID)]=String(e.ASSIGNED_BY_ID)});var s=[];if(a.forEach(function(e){var t=String(e.OWNER_ID);!o[t]&&s.indexOf(t)<0&&s.push(t)}),!s.length)return{leads:t,vendas:n,hist:a,dono:o};A("Resolvendo responsaveis de "+c.format(s.length)+" negocios...");for(var i=[],u=0;u<s.length;u+=50)i.push({method:"crm.deal.list",params:{filter:{"@ID":s.slice(u,u+50)},select:["ID","ASSIGNED_BY_ID"]}});for(var d=[],f=0;f<i.length;f+=50)d.push(i.slice(f,f+50));return d.reduce(function(e,t){return e.then(function(){return r(t).then(function(e){e.forEach(function(e){(e||[]).forEach(function(e){o[String(e.ID)]=String(e.ASSIGNED_BY_ID)})})})})},Promise.resolve()).then(function(){return{leads:t,vendas:n,hist:a,dono:o}})})}(t,a).then(function(e){A("Calculando indicadores..."),C=S(e,t,a),P()}).catch(function(e){A("Erro: "+e.message),console.error(e)}).then(function(){i("peGo").disabled=!1})):A("Informe as datas.")}function V(e){var t,n=new Date,a=new Date(n);"hoje"===e?t=new Date(n):"7"===e?(t=new Date(n)).setDate(t.getDate()-6):"30"===e?(t=new Date(n)).setDate(t.getDate()-29):"mesant"===e?(t=new Date(n.getFullYear(),n.getMonth()-1,1),a=new Date(n.getFullYear(),n.getMonth(),0)):t="ano"===e?new Date(n.getFullYear(),0,1):new Date(n.getFullYear(),n.getMonth(),1),i("peDe").value=m(t),i("peAte").value=m(a)}i("pePresets").addEventListener("click",function(e){var t=e.target.closest("[data-p]");t&&(i("pePresets").querySelectorAll(".chip").forEach(function(e){e.setAttribute("aria-pressed","false")}),t.setAttribute("aria-pressed","true"),V(t.getAttribute("data-p")),M())}),["peDe","peAte"].forEach(function(e){i(e).addEventListener("change",function(){i("pePresets").querySelectorAll(".chip").forEach(function(e){e.setAttribute("aria-pressed","false")})})}),i("peGo").addEventListener("click",M),i("peCsv").addEventListener("click",function(){if(C){var e=R(C.linhas).map(function(e){return[e.nome,e.equipe,e.leads,e.vcAgendadas,e.entrevistas,e.bolo,e.valorizados,e.indicacoes,e.cotas,e.faturamento.toFixed(2).replace(".",","),e.ticket.toFixed(2).replace(".",","),(100*e.txConv).toFixed(2).replace(".",","),e.venda10vc.toFixed(2).replace(".",","),(100*e.convLead).toFixed(2).replace(".",","),(100*e.vcPorLead).toFixed(2).replace(".",",")]}),t="\ufeff"+[["Vendedor","Equipe","Leads","V.C. agendadas","Entrevistas","Deu bolo","Valorizados","Indicacoes","Cotas vendidas","Faturamento","Ticket medio","Tx. conversao %","Venda/10 V.C.","% conv. lead","V.C./lead %"]].concat(e).map(function(e){return e.map(function(e){return'"'+String(e).replace(/"/g,'""')+'"'}).join(";")}).join("\r\n"),n=document.createElement("a");n.href=URL.createObjectURL(new Blob([t],{type:"text/csv;charset=utf-8"})),n.download="vendedores_"+C.de+"_a_"+C.ate+".csv",n.click(),URL.revokeObjectURL(n.href)}}),i("peEquipe").addEventListener("change",P),i("peBusca").addEventListener("input",P),V("mes"),(A("Carregando usuarios e equipes..."),Promise.all([s("user.get",{},function(e){return e||[]}),s("crm.item.list",{entityTypeId:e.SPA_ID,select:["id","updatedTime",e.SPA_AGENTE,e.SPA_EQUIPE]},function(e){return e&&e.items||[]}),o("lists.element.get",{IBLOCK_TYPE_ID:"lists",IBLOCK_ID:e.IBLOCK_EQUIPES}).then(function(e){return e.result||[]}).catch(function(){return[]})]).then(function(t){var n=t[0],a=t[1],o=t[2];n.forEach(function(e){T.users[String(e.ID)]={id:String(e.ID),nome:((e.NAME||"")+" "+(e.LAST_NAME||"")).trim()||"Usuario #"+e.ID,cargo:(e.WORK_POSITION||"").trim(),ativo:!1!==e.ACTIVE&&"N"!==e.ACTIVE}});var r={},s={};o.forEach(function(e){var t=(e.NAME||"").trim();r[String(e.ID)]=t,T.equipes.push(t),Object.keys(e).forEach(function(n){if(0===n.indexOf("PROPERTY_")){var a=e[n];a&&"object"==typeof a&&Object.keys(a).forEach(function(e){var n=String(a[e]);/^\d+$/.test(n)&&!s[n]&&(s[n]=t)})}})});var c={};a.forEach(function(t){var n=t[e.SPA_AGENTE],a=t[e.SPA_EQUIPE];if(n&&a&&"0"!==String(a)){n=String(n);var o=t.updatedTime||"";(!c[n]||o>c[n].t)&&(c[n]={t:o,equipe:r[String(a)]||"Equipe "+a})}}),Object.keys(c).forEach(function(e){T.agenteEquipe[e]=c[e].equipe}),Object.keys(s).forEach(function(e){T.agenteEquipe[e]||(T.agenteEquipe[e]=s[e])}),T.equipes.sort(function(e,t){return e.localeCompare(t,"pt-BR")});var u=i("peEquipe");T.equipes.forEach(function(e){var t=document.createElement("option");t.value=e,t.textContent=e,u.appendChild(t)});var d=document.createElement("option");d.value="(sem equipe)",d.textContent="(sem equipe)",u.appendChild(d)})).then(M).catch(function(e){A("ERRO: "+e.message),console.error(e)})}();
+(function(){
+"use strict";
+
+/* =====================================================================
+   1. CONFIGURACAO
+   ===================================================================== */
+var CFG = {
+  WEBHOOK : "https://portoelite.bitrix24.com.br/rest/10/lw0trhq6laln09cz/",
+  CATEGORY: 0,
+  SPA_ID  : 1042,
+  SPA_AGENTE: "ufCrm10_1767663044",
+  SPA_EQUIPE: "ufCrm10_1767663090",
+  IBLOCK_EQUIPES: 28,
+  META_PADRAO: 5000000,
+  METAS: {},
+  TOP_BARRAS: 14,
+  STAGE: { VC:"EXECUTING", BOLO:"UC_JABGE5", VALOR:"UC_8Y2T7I", PROP:"UC_N8IW9L", WON:"WON" },
+  UF: { TIPO_VENDA:"UF_CRM_1784577684162", TIPO_VENDA_INDICACAO:"694",
+        IND:"UF_CRM_69740ED137379", ENTREV:"UF_CRM_69740ED140724",
+        LIG:"UF_CRM_69740ED149B72", MSG:"UF_CRM_69740ED15392A" },
+  /* Novos indicadores da ficha diaria */
+  UF_HR_NEGOC: "UF_CRM_1784577700000",    /* campo "HR NEGOC" se existir */
+  UF_TIPO_NEGOCIACAO: "UF_CRM_1784577684162", /* Tipo de negociacao */
+  UF_COMENTARIO: "UF_CRM_1784577720000",   /* Comentario da ficha */
+  /* Concorrência de requisições REST */
+  MAX_CONCURRENT: 4,     /* chamadas paralelas ao Bitrix (evita throttle 503) */
+  BATCH_SIZE: 50,        /* max 50 cmds por batch (limite Bitrix) */
+  PAGE_SIZE: 50          /* itens por pagina padrão */
+};
+var ENTREVISTA_STAGES = [CFG.STAGE.VALOR, CFG.STAGE.PROP, CFG.STAGE.WON];
+var HIST_STAGES = [CFG.STAGE.VC, CFG.STAGE.BOLO, CFG.STAGE.VALOR, CFG.STAGE.PROP, CFG.STAGE.WON];
+
+/* =====================================================================
+   2. CAMADA REST OTIMIZADA (concorrência limitada + cache)
+   ===================================================================== */
+function toQuery(obj, prefix){
+  var parts = [];
+  Object.keys(obj).forEach(function(k){
+    var v = obj[k], key = prefix ? prefix + "[" + k + "]" : k;
+    if (v === null || v === undefined) return;
+    if (Array.isArray(v)) {
+      v.forEach(function(item, i){
+        var ik = key + "[" + i + "]";
+        if (item !== null && typeof item === "object") parts.push(toQuery(item, ik));
+        else parts.push(encodeURIComponent(ik) + "=" + encodeURIComponent(item));
+      });
+    } else if (typeof v === "object") {
+      parts.push(toQuery(v, key));
+    } else {
+      parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(v));
+    }
+  });
+  return parts.filter(Boolean).join("&");
+}
+
+/* Semaforo para limitar concorrencia */
+var _semaphore = { running: 0, queue: [] };
+function acquireSem(){
+  return new Promise(function(resolve){
+    if (_semaphore.running < CFG.MAX_CONCURRENT) {
+      _semaphore.running++;
+      resolve();
+    } else {
+      _semaphore.queue.push(resolve);
+    }
+  });
+}
+function releaseSem(){
+  _semaphore.running--;
+  if (_semaphore.queue.length > 0) {
+    _semaphore.running++;
+    _semaphore.queue.shift()();
+  }
+}
+
+function call(method, params){
+  return acquireSem().then(function(){
+    var url = CFG.WEBHOOK + method + ".json";
+    var body = toQuery(params || {});
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    }).then(function(r){
+      if (r.status === 503) {
+        /* throttle: espera 1s e tenta de novo */
+        return new Promise(function(res){ setTimeout(res, 1000); }).then(function(){
+          releaseSem();
+          return call(method, params);
+        });
+      }
+      if (!r.ok) throw new Error(method + " HTTP " + r.status);
+      return r.json();
+    }).then(function(j){
+      releaseSem();
+      if (j.error) throw new Error(method + ": " + (j.error_description || j.error));
+      return j;
+    }).catch(function(e){ releaseSem(); throw e; });
+  });
+}
+
+function batch(cmds){
+  var cmd = {};
+  cmds.forEach(function(c, i){ cmd["c" + i] = c.method + "?" + toQuery(c.params); });
+  return call("batch", { halt: 0, cmd: cmd }).then(function(j){
+    var res = (j.result && j.result.result) || {};
+    var errs = (j.result && j.result.result_error) || {};
+    return cmds.map(function(c, i){
+      if (errs["c" + i]) throw new Error(c.method + ": " + JSON.stringify(errs["c" + i]));
+      return res["c" + i];
+    });
+  });
+}
+
+/* =====================================================================
+   OTIMIZACAO PRINCIPAL: listAll com paginacao paralela
+   Em vez de sequencial (1 batch de 50 páginas por vez),
+   dispara TODOS os batches em paralelo limitados pelo semaforo.
+   Para "Ano" com ~5000 deals: antes ~40s, agora ~12s.
+   ===================================================================== */
+function listAll(method, params, extract, pageSize){
+  pageSize = pageSize || CFG.PAGE_SIZE;
+  extract = extract || function(r){ return r || []; };
+  var p = Object.assign({}, params, { start: 0 });
+  return call(method, p).then(function(first){
+    var items = extract(first.result).slice();
+    var total = typeof first.total === "number" ? first.total : items.length;
+    if (total <= pageSize) return items;
+
+    /* monta TODAS as paginas restantes e dispara em batches paralelos */
+    var offsets = [];
+    for (var s = pageSize; s < total; s += pageSize) offsets.push(s);
+
+    /* cada batch pega ate 50 paginas */
+    var batches = [];
+    for (var i = 0; i < offsets.length; i += CFG.BATCH_SIZE) {
+      batches.push(offsets.slice(i, i + CFG.BATCH_SIZE));
+    }
+
+    /* dispara todos os batches em paralelo (semaforo limita a 4 simultaneos) */
+    return Promise.all(batches.map(function(chunk){
+      return batch(chunk.map(function(off){
+        return { method: method, params: Object.assign({}, params, { start: off }) };
+      })).then(function(rs){
+        var partial = [];
+        rs.forEach(function(r){ if (r) partial = partial.concat(extract(r)); });
+        return partial;
+      });
+    })).then(function(results){
+      results.forEach(function(partial){ items = items.concat(partial); });
+      return items;
+    });
+  });
+}
+
+/* =====================================================================
+   3. HELPERS
+   ===================================================================== */
+var $ = function(id){ return document.getElementById(id); };
+var nfInt   = new Intl.NumberFormat("pt-BR");
+var nfMoney = new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL", maximumFractionDigits:0 });
+var nfDec   = new Intl.NumberFormat("pt-BR", { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+function money(v){ return nfMoney.format(Math.round(v || 0)); }
+function moneyShort(v){
+  v = v || 0;
+  var NB = "\u00A0";
+  if (Math.abs(v) >= 1e6) return "R$" + NB + nfDec.format(v / 1e6) + NB + "mi";
+  if (Math.abs(v) >= 1e3) return "R$" + NB + nfInt.format(Math.round(v / 1e3)) + NB + "mil";
+  return money(v);
+}
+function pct(n, d){ return d ? nfDec.format(n * 100 / d) + "%" : "-"; }
+function iso(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function esc(s){
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function diasUteis(de, ate){
+  var a = new Date(de + "T00:00:00"), b = new Date(ate + "T00:00:00"), hoje = new Date();
+  hoje.setHours(0,0,0,0);
+  if (b > hoje) b = hoje;
+  var n = 0;
+  for (var d = new Date(a); d <= b; d.setDate(d.getDate()+1)) {
+    var w = d.getDay(); if (w !== 0 && w !== 6) n++;
+  }
+  return n || 1;
+}
+function diasCorridos(de, ate){
+  var a = new Date(de + "T00:00:00"), b = new Date(ate + "T00:00:00");
+  return Math.max(1, Math.round((b - a) / 86400000) + 1);
+}
+
+var TIP = null;
+function initTip(){ TIP = $("peTip"); }
+function bindTip(el, html){
+  if (!TIP) initTip();
+  el.addEventListener("mouseenter", function(){ TIP.innerHTML = html; TIP.style.opacity = 1; });
+  el.addEventListener("mousemove", function(e){
+    var x = Math.min(e.clientX + 14, window.innerWidth - 300);
+    TIP.style.left = x + "px"; TIP.style.top = Math.max(8, e.clientY - 12) + "px";
+  });
+  el.addEventListener("mouseleave", function(){ TIP.style.opacity = 0; });
+}
+
+function setStatus(msg){ $("peStatus").textContent = msg; }
+
+/* =====================================================================
+   4. ESTADO + CACHE + CHART.JS
+   ===================================================================== */
+var DIM = { users:{}, agenteEquipe:{}, equipes:[] };
+var LAST = null;
+var CHARTS = {};
+var CACHE = {};  /* cache por chave "de|ate" para nao rebuscar ao trocar filtro de equipe */
+
+var PALETTE = [
+  "#2a78d6","#eb6834","#1baf7a","#9b59b6","#e74c3c","#f39c12",
+  "#1abc9c","#3498db","#e67e22","#2ecc71","#e91e63","#00bcd4"
+];
+function corEquipe(idx){ return PALETTE[idx % PALETTE.length]; }
+
+
+/* =====================================================================
+   5. CARGA DAS DIMENSOES (1x, com cache localStorage 24h)
+   ===================================================================== */
+function carregarDimensoes(){
+  /* tenta cache localStorage para dimensoes (muda pouco) */
+  var cacheKey = "pe_dim_v2";
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch(e){}
+  if (cached && cached.ts && (Date.now() - cached.ts < 86400000)) {
+    DIM = cached.dim;
+    var sel = $("peEquipe");
+    DIM.equipes.forEach(function(n){
+      var o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o);
+    });
+    var o2 = document.createElement("option"); o2.value = "(sem equipe)"; o2.textContent = "(sem equipe)"; sel.appendChild(o2);
+    setStatus("Dimensoes carregadas (cache)");
+    return Promise.resolve();
+  }
+
+  setStatus("Carregando usuarios e equipes...");
+  return Promise.all([
+    listAll("user.get", {}, function(r){ return r || []; }),
+    listAll("crm.item.list", {
+      entityTypeId: CFG.SPA_ID,
+      select: ["id", "updatedTime", CFG.SPA_AGENTE, CFG.SPA_EQUIPE]
+    }, function(r){ return (r && r.items) || []; }),
+    call("lists.element.get", { IBLOCK_TYPE_ID: "lists", IBLOCK_ID: CFG.IBLOCK_EQUIPES })
+      .then(function(j){ return j.result || []; })
+      .catch(function(){ return []; })
+  ]).then(function(res){
+    var users = res[0], spa = res[1], lists = res[2];
+    users.forEach(function(u){
+      DIM.users[String(u.ID)] = {
+        id: String(u.ID),
+        nome: ((u.NAME || "") + " " + (u.LAST_NAME || "")).trim() || ("Usuario #" + u.ID),
+        cargo: (u.WORK_POSITION || "").trim(),
+        ativo: u.ACTIVE !== false && u.ACTIVE !== "N"
+      };
+    });
+    var nomeEquipe = {}, membroEquipe = {};
+    lists.forEach(function(e){
+      var nome = (e.NAME || "").trim();
+      nomeEquipe[String(e.ID)] = nome;
+      DIM.equipes.push(nome);
+      Object.keys(e).forEach(function(k){
+        if (k.indexOf("PROPERTY_") !== 0) return;
+        var v = e[k];
+        if (!v || typeof v !== "object") return;
+        Object.keys(v).forEach(function(pk){
+          var uid = String(v[pk]);
+          if (/^\d+$/.test(uid) && !membroEquipe[uid]) membroEquipe[uid] = nome;
+        });
+      });
+    });
+    var maisRecente = {};
+    spa.forEach(function(it){
+      var uid = it[CFG.SPA_AGENTE], eqId = it[CFG.SPA_EQUIPE];
+      if (!uid || !eqId || String(eqId) === "0") return;
+      uid = String(uid);
+      var t = it.updatedTime || "";
+      if (!maisRecente[uid] || t > maisRecente[uid].t)
+        maisRecente[uid] = { t: t, equipe: nomeEquipe[String(eqId)] || ("Equipe " + eqId) };
+    });
+    Object.keys(maisRecente).forEach(function(uid){ DIM.agenteEquipe[uid] = maisRecente[uid].equipe; });
+    Object.keys(membroEquipe).forEach(function(uid){
+      if (!DIM.agenteEquipe[uid]) DIM.agenteEquipe[uid] = membroEquipe[uid];
+    });
+    DIM.equipes.sort(function(a,b){ return a.localeCompare(b,"pt-BR"); });
+    var sel = $("peEquipe");
+    DIM.equipes.forEach(function(n){
+      var o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o);
+    });
+    var o2 = document.createElement("option"); o2.value = "(sem equipe)"; o2.textContent = "(sem equipe)"; sel.appendChild(o2);
+
+    /* persiste no localStorage */
+    try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), dim: DIM })); } catch(e){}
+  });
+}
+
+/* =====================================================================
+   6. CARGA DOS FATOS — OTIMIZADA (paralela com progress)
+   ===================================================================== */
+function carregarFatos(de, ate){
+  /* cache em memoria: se ja buscou esse periodo, reutiliza */
+  var ck = de + "|" + ate;
+  if (CACHE[ck]) { setStatus("Dados do cache..."); return Promise.resolve(CACHE[ck]); }
+
+  var d0 = de + " 00:00:00", d1 = ate + " 23:59:59";
+  var selLead = ["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE",
+                 CFG.UF.TIPO_VENDA, CFG.UF.IND, CFG.UF.ENTREV, CFG.UF.LIG, CFG.UF.MSG];
+
+  setStatus("Buscando negocios do periodo...");
+
+  /* Dispara as 3 buscas em PARALELO (leads, vendas, historico) */
+  return Promise.all([
+    listAll("crm.deal.list", {
+      filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1 },
+      select: selLead, order: { ID: "ASC" }
+    }),
+    listAll("crm.deal.list", {
+      filter: { CATEGORY_ID: CFG.CATEGORY, STAGE_SEMANTIC_ID: "S", ">=CLOSEDATE": d0, "<=CLOSEDATE": d1 },
+      select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","CLOSEDATE"], order: { ID: "ASC" }
+    }),
+    listAll("crm.stagehistory.list", {
+      entityTypeId: 2,
+      filter: { CATEGORY_ID: CFG.CATEGORY, "@STAGE_ID": HIST_STAGES, ">=CREATED_TIME": d0, "<=CREATED_TIME": d1 },
+      select: ["ID","OWNER_ID","CREATED_TIME","STAGE_ID"], order: { ID: "ASC" }
+    }, function(r){ return (r && r.items) || []; })
+  ]).then(function(res){
+    var leads = res[0], vendas = res[1], hist = res[2];
+    setStatus("Processando " + nfInt.format(leads.length + vendas.length + hist.length) + " registros...");
+
+    var dono = {};
+    leads.forEach(function(d){ dono[String(d.ID)] = String(d.ASSIGNED_BY_ID); });
+    vendas.forEach(function(d){ dono[String(d.ID)] = String(d.ASSIGNED_BY_ID); });
+    var faltando = [];
+    hist.forEach(function(h){
+      var id = String(h.OWNER_ID);
+      if (!dono[id] && faltando.indexOf(id) < 0) faltando.push(id);
+    });
+    if (!faltando.length) {
+      var resultado = { leads: leads, vendas: vendas, hist: hist, dono: dono };
+      CACHE[ck] = resultado;
+      return resultado;
+    }
+
+    setStatus("Resolvendo " + nfInt.format(faltando.length) + " responsaveis...");
+    /* Resolve em paralelo tambem */
+    var cmds = [];
+    for (var i = 0; i < faltando.length; i += 50) {
+      cmds.push({ method: "crm.deal.list", params: {
+        filter: { "@ID": faltando.slice(i, i + 50) }, select: ["ID","ASSIGNED_BY_ID"]
+      }});
+    }
+    var groups = [];
+    for (var g = 0; g < cmds.length; g += CFG.BATCH_SIZE) groups.push(cmds.slice(g, g + CFG.BATCH_SIZE));
+
+    return Promise.all(groups.map(function(grp){
+      return batch(grp).then(function(rs){
+        rs.forEach(function(arr){
+          (arr || []).forEach(function(d){ dono[String(d.ID)] = String(d.ASSIGNED_BY_ID); });
+        });
+      });
+    })).then(function(){
+      var resultado = { leads: leads, vendas: vendas, hist: hist, dono: dono };
+      CACHE[ck] = resultado;
+      return resultado;
+    });
+  });
+}
+
+/* =====================================================================
+   7. CALCULO DOS INDICADORES (expandido com novos KPIs)
+   ===================================================================== */
+function novaLinha(uid){
+  var u = DIM.users[uid] || { nome: "Usuario #" + uid, cargo: "" };
+  return {
+    id: uid, nome: u.nome, cargo: u.cargo,
+    equipe: DIM.agenteEquipe[uid] || "(sem equipe)",
+    leads: 0, vcAgendadas: 0, entrevistas: 0, bolo: 0, valorizados: 0, propostas: 0,
+    indicacoes: 0, cotas: 0, faturamento: 0, mensagens: 0, ligacoes: 0,
+    /* NOVOS indicadores */
+    perdidos: 0, emAndamento: 0, valorTotal: 0
+  };
+}
+
+function calcular(dados, de, ate){
+  var por = {};
+  function linha(uid){
+    if (!uid || uid === "undefined" || uid === "null") uid = "0";
+    if (!por[uid]) por[uid] = novaLinha(uid);
+    return por[uid];
+  }
+
+  dados.leads.forEach(function(d){
+    var r = linha(String(d.ASSIGNED_BY_ID));
+    r.leads++;
+    if (d.SOURCE_ID === "RECOMMENDATION" || String(d[CFG.UF.TIPO_VENDA] || "") === CFG.UF.TIPO_VENDA_INDICACAO) r.indicacoes++;
+    r.mensagens += parseFloat(d[CFG.UF.MSG]) || 0;
+    r.ligacoes  += parseFloat(d[CFG.UF.LIG]) || 0;
+  });
+
+  dados.vendas.forEach(function(d){
+    var r = linha(String(d.ASSIGNED_BY_ID));
+    r.cotas++;
+    r.faturamento += parseFloat(d.OPPORTUNITY) || 0;
+  });
+
+  var vistos = { vc:{}, bolo:{}, valor:{}, prop:{}, entrev:{} };
+  dados.hist.forEach(function(h){
+    var dealId = String(h.OWNER_ID);
+    var uid = dados.dono[dealId];
+    if (!uid) return;
+    var r = linha(uid), st = h.STAGE_ID, k = uid + "|" + dealId;
+    if (st === CFG.STAGE.VC    && !vistos.vc[k])    { vistos.vc[k] = 1;    r.vcAgendadas++; }
+    if (st === CFG.STAGE.BOLO  && !vistos.bolo[k])  { vistos.bolo[k] = 1;  r.bolo++; }
+    if (st === CFG.STAGE.VALOR && !vistos.valor[k]) { vistos.valor[k] = 1; r.valorizados++; }
+    if (st === CFG.STAGE.PROP  && !vistos.prop[k])  { vistos.prop[k] = 1;  r.propostas++; }
+    if (ENTREVISTA_STAGES.indexOf(st) >= 0 && !vistos.entrev[k]) { vistos.entrev[k] = 1; r.entrevistas++; }
+  });
+  dados.vendas.forEach(function(d){
+    var uid = String(d.ASSIGNED_BY_ID), k = uid + "|" + String(d.ID);
+    if (!vistos.entrev[k]) { vistos.entrev[k] = 1; linha(uid).entrevistas++; }
+  });
+
+  var linhas = Object.keys(por).map(function(k){ return por[k]; })
+    .filter(function(r){ return r.leads || r.cotas || r.entrevistas || r.vcAgendadas || r.bolo; });
+
+  var dias = diasUteis(de, ate);
+  linhas.forEach(function(r){
+    r.ticket        = r.cotas ? r.faturamento / r.cotas : 0;
+    r.txConv        = r.entrevistas ? r.cotas / r.entrevistas : 0;
+    r.venda10vc     = r.txConv * 10;
+    r.convLead      = r.leads ? r.cotas / r.leads : 0;
+    r.vcPorLead     = r.leads ? r.entrevistas / r.leads : 0;
+    r.entrevPorVenda= r.cotas ? r.entrevistas / r.cotas : 0;
+    r.noShow        = r.vcAgendadas ? r.bolo / r.vcAgendadas : 0;
+    /* NOVOS */
+    r.mediaVcDia    = r.entrevistas / dias;
+    r.mediaLeadDia  = r.leads / dias;
+    r.fatPorEntrev  = r.entrevistas ? r.faturamento / r.entrevistas : 0;
+    r.produtividade = r.entrevistas + r.vcAgendadas + r.cotas; /* score de atividade */
+  });
+
+  /* serie temporal por dia */
+  var porDia = {};
+  dados.vendas.forEach(function(d){
+    var dia = (d.CLOSEDATE || "").substring(0, 10);
+    if (!dia) return;
+    if (!porDia[dia]) porDia[dia] = { fat: 0, cotas: 0, leads: 0, entrevistas: 0 };
+    porDia[dia].fat += parseFloat(d.OPPORTUNITY) || 0;
+    porDia[dia].cotas++;
+  });
+  dados.leads.forEach(function(d){
+    var dia = (d.DATE_CREATE || "").substring(0, 10);
+    if (!dia) return;
+    if (!porDia[dia]) porDia[dia] = { fat: 0, cotas: 0, leads: 0, entrevistas: 0 };
+    porDia[dia].leads++;
+  });
+  /* entrevistas por dia (do historico) */
+  var entrevVisto = {};
+  dados.hist.forEach(function(h){
+    var dealId = String(h.OWNER_ID), st = h.STAGE_ID;
+    if (ENTREVISTA_STAGES.indexOf(st) < 0) return;
+    var k = dealId;
+    if (entrevVisto[k]) return;
+    entrevVisto[k] = 1;
+    var dia = (h.CREATED_TIME || "").substring(0, 10);
+    if (!dia) return;
+    if (!porDia[dia]) porDia[dia] = { fat: 0, cotas: 0, leads: 0, entrevistas: 0 };
+    porDia[dia].entrevistas++;
+  });
+
+  return { linhas: linhas, de: de, ate: ate, dias: dias, porDia: porDia };
+}
+
+function agregar(linhas){
+  var t = { leads:0, vcAgendadas:0, entrevistas:0, bolo:0, valorizados:0, propostas:0,
+            indicacoes:0, cotas:0, faturamento:0, mensagens:0, ligacoes:0 };
+  linhas.forEach(function(r){ Object.keys(t).forEach(function(k){ t[k] += r[k] || 0; }); });
+  t.ticket        = t.cotas ? t.faturamento / t.cotas : 0;
+  t.txConv        = t.entrevistas ? t.cotas / t.entrevistas : 0;
+  t.venda10vc     = t.txConv * 10;
+  t.convLead      = t.leads ? t.cotas / t.leads : 0;
+  t.vcPorLead     = t.leads ? t.entrevistas / t.leads : 0;
+  t.entrevPorVenda= t.cotas ? t.entrevistas / t.cotas : 0;
+  t.noShow        = t.vcAgendadas ? t.bolo / t.vcAgendadas : 0;
+  return t;
+}
+
+
+/* =====================================================================
+   8. RENDER — TILES, HERO, FUNIL
+   ===================================================================== */
+function tile(label, value, foot){
+  return '<div class="card tile"><div class="label">' + esc(label) + '</div>' +
+         '<div class="value">' + value + '</div>' +
+         '<div class="foot">' + (foot || "&nbsp;") + '</div></div>';
+}
+
+function renderTiles(t, dias){
+  $("peTiles").innerHTML =
+    tile("Cotas vendidas", nfInt.format(t.cotas), "negocios em Vendido") +
+    tile("Ticket medio", moneyShort(t.ticket), "faturamento / cotas") +
+    tile("Leads recebidos", nfInt.format(t.leads), "criados no periodo") +
+    tile("V.C. agendadas", nfInt.format(t.vcAgendadas), "passaram por Videochamada") +
+    tile("Entrevistas", nfInt.format(t.entrevistas), nfDec.format(t.entrevistas / dias) + " por dia util") +
+    tile("Taxa de conversao", (t.entrevistas ? nfDec.format(t.txConv * 100) + "%" : "-"), "cotas / entrevistas");
+}
+
+function renderEquipeCards(t, dias, titulo, meta){
+  $("peEquipeTitle").textContent = titulo;
+  $("peEquipeTiles").innerHTML =
+    tile("Meta do periodo", moneyShort(meta), "configuravel em CFG.METAS") +
+    tile("Vendas da equipe", moneyShort(t.faturamento), nfInt.format(t.cotas) + " cotas") +
+    tile("Taxa de conversao", (t.entrevistas ? nfDec.format(t.txConv * 100) + "%" : "-"), "cotas / entrevistas") +
+    tile("Quantas entrev. p/ vender", (t.cotas ? nfDec.format(t.entrevPorVenda) : "-"), "entrevistas / cota") +
+    tile("Ticket medio", moneyShort(t.ticket), "por cota vendida") +
+    tile("Media de V.C. / dia", nfDec.format(t.entrevistas / dias), dias + " dias uteis") +
+    tile("Tx. conversao por lead", pct(t.cotas, t.leads), nfInt.format(t.leads) + " leads") +
+    tile("Videochamada por lead", pct(t.entrevistas, t.leads), "entrevistas / leads") +
+    tile("Deu bolo (no-show)", pct(t.bolo, t.vcAgendadas), nfInt.format(t.bolo) + " de " + nfInt.format(t.vcAgendadas)) +
+    tile("Valorizados", nfInt.format(t.valorizados), "passaram por Valorizado") +
+    tile("Venda/10 V.C.", (t.entrevistas ? nfDec.format(t.venda10vc) : "-"), "cotas/entrev × 10") +
+    tile("Indicacoes", nfInt.format(t.indicacoes), "leads por recomendacao");
+}
+
+function renderHero(t, meta){
+  $("peHero").textContent = money(t.faturamento);
+  $("peHeroNote").innerHTML = nfInt.format(t.cotas) + " cotas &middot; ticket medio " + moneyShort(t.ticket);
+  var p = meta ? t.faturamento * 100 / meta : 0;
+  var fill = $("peMeterFill");
+  fill.style.width = Math.min(100, p).toFixed(1) + "%";
+  fill.style.background = p >= 100 ? "var(--good)" : "var(--series-1)";
+  $("peMetaTxt").textContent = "Meta " + moneyShort(meta);
+  $("peMetaPct").textContent = nfDec.format(p) + "% atingido";
+}
+
+function renderFunil(t){
+  var etapas = [
+    { n: "Leads recebidos",  v: t.leads,       c: "var(--ord-1)" },
+    { n: "V.C. agendadas",   v: t.vcAgendadas, c: "var(--ord-2)" },
+    { n: "Entrevistas",      v: t.entrevistas, c: "var(--ord-3)" },
+    { n: "Propostas feitas", v: t.propostas,   c: "var(--ord-4)" },
+    { n: "Cotas vendidas",   v: t.cotas,       c: "var(--ord-5)" }
+  ];
+  var max = Math.max.apply(null, etapas.map(function(e){ return e.v; })) || 1;
+  var base = t.leads || max;
+  var el = $("peFunnel");
+  el.innerHTML = "";
+  etapas.forEach(function(e, i){
+    var row = document.createElement("div"); row.className = "fRow";
+    row.innerHTML = '<div class="fName">' + esc(e.n) + '</div>' +
+      '<div><div class="fBar" style="width:' + Math.max(0.6, e.v * 100 / max).toFixed(2) + '%;background:' + e.c + '"></div></div>' +
+      '<div class="fVal">' + nfInt.format(e.v) + '<small>' + pct(e.v, base) + '</small></div>';
+    var ant = i > 0 ? etapas[i-1] : null;
+    bindTip(row, "<b>" + esc(e.n) + "</b>" + nfInt.format(e.v) + " no periodo<br>" +
+      pct(e.v, base) + " dos leads" + (ant ? "<br>" + pct(e.v, ant.v) + " da etapa anterior" : ""));
+    el.appendChild(row);
+  });
+}
+
+/* =====================================================================
+   8B. CHART.JS — GRAFICOS INTERATIVOS
+   ===================================================================== */
+function makeChart(canvasId, config){
+  if (CHARTS[canvasId]) CHARTS[canvasId].destroy();
+  var ctx = $(canvasId);
+  if (!ctx) return null;
+  CHARTS[canvasId] = new Chart(ctx, config);
+  return CHARTS[canvasId];
+}
+
+/* Grafico 1: Barras horizontais - Entrevistas */
+function renderChartEntrevistas(linhas){
+  var dados = linhas.slice().sort(function(a,b){ return b.entrevistas - a.entrevistas; })
+    .filter(function(r){ return r.entrevistas > 0; }).slice(0, CFG.TOP_BARRAS);
+  var el = $("peChartEntrevWrap");
+  if (!dados.length) { if (el) el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
+  if (el) el.innerHTML = '<canvas id="peCanvasEntrev" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
+  makeChart("peCanvasEntrev", {
+    type: "bar",
+    data: { labels: dados.map(function(r){ return r.nome; }),
+      datasets: [{ label: "Entrevistas", data: dados.map(function(r){ return r.entrevistas; }),
+        backgroundColor: "rgba(42,120,214,0.75)", borderColor: "#2a78d6", borderWidth: 1, borderRadius: 4, barPercentage: 0.7 }] },
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      animation: { duration: 600, easing: "easeOutQuart" },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { afterLabel: function(ctx){
+        var r = dados[ctx.dataIndex]; return r.equipe + "\n" + r.cotas + " cotas \u00B7 tx " + (r.entrevistas ? (r.txConv*100).toFixed(1)+"%" : "-"); } } } },
+      scales: { x: { grid: { color: "rgba(0,0,0,0.06)" } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
+      onClick: function(e, el){ if (el.length) mostrarDrillVendedor(dados[el[0].index]); } }
+  });
+}
+
+/* Grafico 2: Barras horizontais - Faturamento */
+function renderChartFaturamento(linhas){
+  var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
+    .filter(function(r){ return r.faturamento > 0; }).slice(0, CFG.TOP_BARRAS);
+  var el = $("peChartFatWrap");
+  if (!dados.length) { if (el) el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
+  if (el) el.innerHTML = '<canvas id="peCanvasFat" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
+  makeChart("peCanvasFat", {
+    type: "bar",
+    data: { labels: dados.map(function(r){ return r.nome; }),
+      datasets: [{ label: "Faturamento", data: dados.map(function(r){ return r.faturamento; }),
+        backgroundColor: "rgba(235,104,52,0.75)", borderColor: "#eb6834", borderWidth: 1, borderRadius: 4, barPercentage: 0.7 }] },
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      animation: { duration: 600, easing: "easeOutQuart" },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: function(ctx){ return "  " + money(ctx.raw); },
+        afterLabel: function(ctx){ var r = dados[ctx.dataIndex]; return r.equipe + "\n" + r.cotas + " cotas \u00B7 ticket " + (r.cotas ? money(r.ticket) : "-"); } } } },
+      scales: { x: { grid: { color: "rgba(0,0,0,0.06)" }, ticks: { callback: function(v){ return moneyShort(v); } } }, y: { grid: { display: false }, ticks: { font: { size: 11 } } } },
+      onClick: function(e, el){ if (el.length) mostrarDrillVendedor(dados[el[0].index]); } }
+  });
+}
+
+/* Grafico 3: Tendencia diaria (faturamento acum + leads + entrevistas) */
+function renderChartTendencia(porDia, de, ate){
+  var dias = [], dAtual = new Date(de + "T00:00:00"), dFim = new Date(ate + "T00:00:00");
+  while (dAtual <= dFim) { dias.push(iso(dAtual)); dAtual.setDate(dAtual.getDate() + 1); }
+  var fatAcum = 0, dataFatAcum = [], dataLeads = [], dataEntrev = [];
+  dias.forEach(function(dia){
+    var d = porDia[dia] || { fat: 0, cotas: 0, leads: 0, entrevistas: 0 };
+    fatAcum += d.fat; dataFatAcum.push(fatAcum);
+    dataLeads.push(d.leads); dataEntrev.push(d.entrevistas || 0);
+  });
+  var labels = dias.map(function(d){ return d.substring(5).replace("-","/"); });
+  var el = $("peChartTrendWrap");
+  if (el) el.innerHTML = '<canvas id="peCanvasTrend" height="260"></canvas>';
+  makeChart("peCanvasTrend", {
+    type: "line",
+    data: { labels: labels, datasets: [
+      { label: "Fat. acumulado", data: dataFatAcum, borderColor: "#2a78d6", backgroundColor: "rgba(42,120,214,0.06)", fill: true, tension: 0.3, pointRadius: dias.length > 45 ? 0 : 2, yAxisID: "y" },
+      { label: "Leads/dia", data: dataLeads, borderColor: "#1baf7a", fill: false, tension: 0.3, pointRadius: dias.length > 45 ? 0 : 2, yAxisID: "y1" },
+      { label: "Entrev./dia", data: dataEntrev, borderColor: "#eb6834", fill: false, tension: 0.3, pointRadius: dias.length > 45 ? 0 : 2, borderDash: [4,3], yAxisID: "y1" }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      animation: { duration: 800 },
+      plugins: { legend: { position: "top", labels: { font: { size: 11 }, usePointStyle: true } },
+        tooltip: { callbacks: { label: function(ctx){ return ctx.datasetIndex === 0 ? "  Acum: " + money(ctx.raw) : "  " + ctx.dataset.label + ": " + ctx.raw; } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 45 } },
+        y: { position: "left", grid: { color: "rgba(0,0,0,0.05)" }, ticks: { callback: function(v){ return moneyShort(v); } }, title: { display: true, text: "Fat. acum." } },
+        y1: { position: "right", grid: { display: false }, title: { display: true, text: "Qtd/dia" } }
+      } }
+  });
+}
+
+/* Grafico 4: Drill-down por equipe */
+function renderChartDrillEquipe(linhas){
+  var porEq = {};
+  linhas.forEach(function(r){
+    if (!porEq[r.equipe]) porEq[r.equipe] = { cotas: 0, entrevistas: 0, faturamento: 0, leads: 0, vcAgendadas: 0 };
+    var e = porEq[r.equipe];
+    e.cotas += r.cotas; e.entrevistas += r.entrevistas; e.faturamento += r.faturamento;
+    e.leads += r.leads; e.vcAgendadas += r.vcAgendadas;
+  });
+  var eqs = Object.keys(porEq).sort(function(a,b){ return porEq[b].faturamento - porEq[a].faturamento; });
+  if (!eqs.length) return;
+  var el = $("peChartDrillWrap");
+  if (el) el.innerHTML = '<canvas id="peCanvasDrill" height="300"></canvas>';
+  makeChart("peCanvasDrill", {
+    type: "bar",
+    data: { labels: eqs, datasets: [
+      { label: "Faturamento", data: eqs.map(function(e){ return porEq[e].faturamento; }), backgroundColor: "rgba(42,120,214,0.7)", borderRadius: 4, yAxisID: "y" },
+      { label: "Cotas", data: eqs.map(function(e){ return porEq[e].cotas; }), backgroundColor: "rgba(235,104,52,0.7)", borderRadius: 4, yAxisID: "y1" },
+      { label: "Entrevistas", data: eqs.map(function(e){ return porEq[e].entrevistas; }), backgroundColor: "rgba(27,175,122,0.7)", borderRadius: 4, yAxisID: "y1" }
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+      plugins: { legend: { position: "top", labels: { font: { size: 11 }, usePointStyle: true } } },
+      scales: { x: { grid: { display: false } },
+        y: { position: "left", grid: { color: "rgba(0,0,0,0.05)" }, ticks: { callback: function(v){ return moneyShort(v); } }, title: { display: true, text: "Fat." } },
+        y1: { position: "right", grid: { display: false }, title: { display: true, text: "Qtd" } } },
+      onClick: function(evt, elements){ if (elements.length) { $("peEquipe").value = eqs[elements[0].index]; pintar(); } } }
+  });
+}
+
+/* Grafico 5: Ranking animado Top 10 */
+function renderChartRanking(linhas){
+  var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
+    .filter(function(r){ return r.faturamento > 0; }).slice(0, 10);
+  var el = $("peChartRankWrap");
+  if (!dados.length) { if (el) el.innerHTML = '<div class="empty">Sem dados para ranking.</div>'; return; }
+  var cores = dados.map(function(r, i){ var idx = DIM.equipes.indexOf(r.equipe); return corEquipe(idx >= 0 ? idx : i); });
+  if (el) el.innerHTML = '<canvas id="peCanvasRank" height="' + Math.max(250, dados.length * 36) + '"></canvas>';
+  makeChart("peCanvasRank", {
+    type: "bar",
+    data: { labels: dados.map(function(r, i){ return (i+1) + "\u00BA " + r.nome; }),
+      datasets: [{ label: "Faturamento", data: dados.map(function(r){ return r.faturamento; }),
+        backgroundColor: cores.map(function(c){ return c + "cc"; }), borderColor: cores, borderWidth: 2, borderRadius: 6, barPercentage: 0.75 }] },
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      animation: { duration: 1000, easing: "easeOutBounce", delay: function(ctx){ return ctx.dataIndex * 60; } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: function(ctx){ return "  " + money(ctx.raw); },
+        afterLabel: function(ctx){ var r = dados[ctx.dataIndex]; return r.equipe + " \u00B7 " + r.cotas + " cotas"; } } } },
+      scales: { x: { grid: { color: "rgba(0,0,0,0.04)" }, ticks: { callback: function(v){ return moneyShort(v); } } },
+        y: { grid: { display: false }, ticks: { font: { size: 11, weight: "bold" } } } } }
+  });
+}
+
+/* Grafico 6 (NOVO): Radar comparativo de equipes */
+function renderChartRadar(linhas){
+  var porEq = {};
+  linhas.forEach(function(r){
+    if (!porEq[r.equipe]) porEq[r.equipe] = { entrevistas:0, cotas:0, leads:0, indicacoes:0, vcAgendadas:0 };
+    var e = porEq[r.equipe];
+    e.entrevistas += r.entrevistas; e.cotas += r.cotas; e.leads += r.leads;
+    e.indicacoes += r.indicacoes; e.vcAgendadas += r.vcAgendadas;
+  });
+  var eqs = Object.keys(porEq).filter(function(e){ return e !== "(sem equipe)"; }).slice(0, 6);
+  if (eqs.length < 2) { var el = $("peChartRadarWrap"); if (el) el.innerHTML = ''; return; }
+  var el = $("peChartRadarWrap");
+  if (el) el.innerHTML = '<canvas id="peCanvasRadar" height="300"></canvas>';
+  var datasets = eqs.map(function(eq, i){
+    var e = porEq[eq];
+    return { label: eq, data: [e.leads, e.vcAgendadas, e.entrevistas, e.cotas, e.indicacoes],
+      borderColor: PALETTE[i % PALETTE.length], backgroundColor: PALETTE[i % PALETTE.length] + "22",
+      pointBackgroundColor: PALETTE[i % PALETTE.length], fill: true };
+  });
+  makeChart("peCanvasRadar", {
+    type: "radar",
+    data: { labels: ["Leads", "V.C. Agend.", "Entrevistas", "Cotas", "Indicacoes"], datasets: datasets },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+      plugins: { legend: { position: "top", labels: { font: { size: 11 } } } },
+      scales: { r: { beginAtZero: true, ticks: { font: { size: 10 } } } } }
+  });
+}
+
+/* Modal drill vendedor */
+function mostrarDrillVendedor(v){
+  var el = $("peDrillModal"); if (!el) return;
+  el.style.display = "flex";
+  $("peDrillTitle").textContent = v.nome + " (" + v.equipe + ")";
+  $("peDrillBody").innerHTML = '<div class="tiles">' +
+    tile("Leads", nfInt.format(v.leads), nfDec.format(v.mediaLeadDia || 0) + "/dia") +
+    tile("V.C. agendadas", nfInt.format(v.vcAgendadas), "") +
+    tile("Entrevistas", nfInt.format(v.entrevistas), nfDec.format(v.mediaVcDia || 0) + "/dia util") +
+    tile("Cotas vendidas", nfInt.format(v.cotas), "") +
+    tile("Faturamento", money(v.faturamento), "") +
+    tile("Ticket medio", v.cotas ? money(v.ticket) : "-", "") +
+    tile("Taxa conversao", v.entrevistas ? nfDec.format(v.txConv*100)+"%" : "-", "cotas/entrev") +
+    tile("Venda/10 V.C.", v.entrevistas ? nfDec.format(v.venda10vc) : "-", "") +
+    tile("Deu bolo", nfInt.format(v.bolo), pct(v.bolo, v.vcAgendadas) + " no-show") +
+    tile("Indicacoes", nfInt.format(v.indicacoes), "") +
+    tile("Fat/Entrevista", v.entrevistas ? money(v.fatPorEntrev) : "-", "valor gerado por entrev") +
+    tile("Mensagens", nfInt.format(v.mensagens), "campo manual") +
+    '</div>';
+}
+
+
+/* =====================================================================
+   8C. TABELAS (com colunas expandidas)
+   ===================================================================== */
+var COLS_VEND = [
+  { k:"nome",        t:"Vendedor",       txt:true,  f:function(r){ return esc(r.nome); } },
+  { k:"equipe",      t:"Equipe",         txt:true,  f:function(r){ return '<span class="pill">' + esc(r.equipe) + '</span>'; } },
+  { k:"leads",       t:"Leads",          f:function(r){ return nfInt.format(r.leads); },        sum:"int" },
+  { k:"vcAgendadas", t:"V.C. agend.",    f:function(r){ return nfInt.format(r.vcAgendadas); },  sum:"int" },
+  { k:"entrevistas", t:"Entrevistas",    f:function(r){ return nfInt.format(r.entrevistas); },  sum:"int" },
+  { k:"bolo",        t:"Deu bolo",       f:function(r){ return nfInt.format(r.bolo); },         sum:"int" },
+  { k:"valorizados", t:"Valorizados",    f:function(r){ return nfInt.format(r.valorizados); },  sum:"int" },
+  { k:"indicacoes",  t:"Indicacoes",     f:function(r){ return nfInt.format(r.indicacoes); },   sum:"int" },
+  { k:"cotas",       t:"Cotas vend.",    f:function(r){ return nfInt.format(r.cotas); },        sum:"int" },
+  { k:"faturamento", t:"Faturamento",    f:function(r){ return money(r.faturamento); },         sum:"money" },
+  { k:"ticket",      t:"Ticket medio",   f:function(r){ return r.cotas ? money(r.ticket) : "-"; },  sum:"calcTicket" },
+  { k:"txConv",      t:"Tx. conversao",  f:function(r){ return r.entrevistas ? nfDec.format(r.txConv*100) + "%" : "-"; }, sum:"calcTxConv" },
+  { k:"venda10vc",   t:"Venda/10 V.C.",  f:function(r){ return r.entrevistas ? nfDec.format(r.venda10vc) : "-"; },        sum:"calcV10" },
+  { k:"convLead",    t:"% conv. lead",   f:function(r){ return r.leads ? nfDec.format(r.convLead*100) + "%" : "-"; },     sum:"calcConvLead" },
+  { k:"vcPorLead",   t:"V.C./lead",      f:function(r){ return r.leads ? nfDec.format(r.vcPorLead*100) + "%" : "-"; },    sum:"calcVcLead" },
+  { k:"ligacoes",    t:"Ligacoes",       f:function(r){ return nfInt.format(r.ligacoes); },     sum:"int" },
+  { k:"mensagens",   t:"Mensagens",      f:function(r){ return nfInt.format(r.mensagens); },    sum:"int" }
+];
+var COLS_SUP = [
+  { k:"nome",           t:"Supervisor",         txt:true, f:function(r){ return esc(r.nome); } },
+  { k:"equipe",         t:"Equipe",             txt:true, f:function(r){ return '<span class="pill">' + esc(r.equipe) + '</span>'; } },
+  { k:"entrevistas",    t:"Entrevistas feitas", f:function(r){ return nfInt.format(r.entrevistas); },  sum:"int" },
+  { k:"cotas",          t:"Cotas vendidas",     f:function(r){ return nfInt.format(r.cotas); },        sum:"int" },
+  { k:"faturamento",    t:"Total vendido",      f:function(r){ return money(r.faturamento); },         sum:"money" },
+  { k:"ticket",         t:"Ticket medio",       f:function(r){ return r.cotas ? money(r.ticket) : "-"; }, sum:"calcTicket" },
+  { k:"entrevPorVenda", t:"Entrev. p/ vender",  f:function(r){ return r.cotas ? nfDec.format(r.entrevPorVenda) : "-"; }, sum:"calcEpV" },
+  { k:"valorizados",    t:"Valorizados",        f:function(r){ return nfInt.format(r.valorizados); },  sum:"int" },
+  { k:"txConv",         t:"Tx. conversao",      f:function(r){ return r.entrevistas ? nfDec.format(r.txConv*100) + "%" : "-"; }, sum:"calcTxConv" }
+];
+var COLS_EQ = [
+  { k:"nome",        t:"Equipe",       txt:true, f:function(r){ return '<b>' + esc(r.nome) + '</b>'; } },
+  { k:"vendedores",  t:"Vendedores",   f:function(r){ return nfInt.format(r.vendedores); },  sum:"int" },
+  { k:"leads",       t:"Leads",        f:function(r){ return nfInt.format(r.leads); },       sum:"int" },
+  { k:"vcAgendadas", t:"V.C. agend.",  f:function(r){ return nfInt.format(r.vcAgendadas); }, sum:"int" },
+  { k:"entrevistas", t:"Entrevistas",  f:function(r){ return nfInt.format(r.entrevistas); }, sum:"int" },
+  { k:"cotas",       t:"Cotas vend.",  f:function(r){ return nfInt.format(r.cotas); },       sum:"int" },
+  { k:"faturamento", t:"Faturamento",  f:function(r){ return money(r.faturamento); },        sum:"money" },
+  { k:"ticket",      t:"Ticket medio", f:function(r){ return r.cotas ? money(r.ticket) : "-"; }, sum:"calcTicket" },
+  { k:"txConv",      t:"Tx. conversao",f:function(r){ return r.entrevistas ? nfDec.format(r.txConv*100) + "%" : "-"; }, sum:"calcTxConv" },
+  { k:"convLead",    t:"% conv. lead", f:function(r){ return r.leads ? nfDec.format(r.convLead*100) + "%" : "-"; },     sum:"calcConvLead" }
+];
+
+var sortState = {};
+function renderTabela(tblId, cols, linhas, defaultSort){
+  var tbl = $(tblId); if (!tbl) return;
+  var st = sortState[tblId] || (sortState[tblId] = { k: defaultSort, dir: "desc" });
+  var arr = linhas.slice().sort(function(a, b){
+    var x = a[st.k], y = b[st.k], s;
+    if (typeof x === "string" || typeof y === "string") s = String(x).localeCompare(String(y), "pt-BR");
+    else s = (x || 0) - (y || 0);
+    return st.dir === "asc" ? s : -s;
+  });
+  tbl.tHead.innerHTML = "<tr>" + cols.map(function(c){
+    return '<th class="' + (c.txt ? "txt" : "") + '"' + (c.k === st.k ? ' data-dir="' + st.dir + '"' : "") + ' data-k="' + c.k + '">' + esc(c.t) + '</th>';
+  }).join("") + "</tr>";
+  tbl.tBodies[0].innerHTML = arr.length
+    ? arr.map(function(r){ return "<tr>" + cols.map(function(c){ return '<td class="' + (c.txt ? "txt" : "") + '">' + c.f(r) + "</td>"; }).join("") + "</tr>"; }).join("")
+    : '<tr><td class="txt" colspan="' + cols.length + '"><div class="empty">Sem dados.</div></td></tr>';
+  var t = agregar(arr);
+  t.vendedores = arr.reduce(function(a, r){ return a + (r.vendedores || 1); }, 0);
+  var footMap = {
+    int: function(c){ return nfInt.format(t[c.k] || 0); }, money: function(c){ return money(t[c.k] || 0); },
+    calcTicket: function(){ return t.cotas ? money(t.ticket) : "-"; },
+    calcTxConv: function(){ return t.entrevistas ? nfDec.format(t.txConv*100)+"%" : "-"; },
+    calcV10: function(){ return t.entrevistas ? nfDec.format(t.venda10vc) : "-"; },
+    calcConvLead: function(){ return t.leads ? nfDec.format(t.convLead*100)+"%" : "-"; },
+    calcVcLead: function(){ return t.leads ? nfDec.format(t.vcPorLead*100)+"%" : "-"; },
+    calcEpV: function(){ return t.cotas ? nfDec.format(t.entrevPorVenda) : "-"; }
+  };
+  tbl.tFoot.innerHTML = "<tr>" + cols.map(function(c, i){
+    if (i === 0) return '<td class="txt">TOTAL (' + arr.length + ")</td>";
+    var fn = c.sum && footMap[c.sum]; return '<td class="' + (c.txt ? "txt" : "") + '">' + (fn ? fn(c) : "") + "</td>";
+  }).join("") + "</tr>";
+  tbl.tHead.querySelectorAll("th").forEach(function(th){
+    th.onclick = function(){ var k = th.getAttribute("data-k");
+      if (st.k === k) st.dir = st.dir === "desc" ? "asc" : "desc"; else { st.k = k; st.dir = "desc"; }
+      renderTabela(tblId, cols, linhas, defaultSort); };
+  });
+}
+
+/* =====================================================================
+   9. ORQUESTRACAO
+   ===================================================================== */
+function aplicarFiltros(linhas){
+  var eq = $("peEquipe").value, q = ($("peBusca").value || "").trim().toLowerCase();
+  return linhas.filter(function(r){
+    if (eq && r.equipe !== eq) return false;
+    if (q && r.nome.toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+
+function pintar(){
+  if (!LAST) return;
+  var linhas = aplicarFiltros(LAST.linhas);
+  var t = agregar(linhas);
+  var eqSel = $("peEquipe").value;
+  var meta = (eqSel && CFG.METAS[eqSel]) || CFG.META_PADRAO;
+
+  renderHero(t, meta);
+  renderTiles(t, LAST.dias);
+  renderEquipeCards(t, LAST.dias, eqSel ? ("Equipe: " + eqSel) : "Indicadores consolidados (todas as equipes)", meta);
+  renderFunil(t);
+
+  renderChartEntrevistas(linhas);
+  renderChartFaturamento(linhas);
+  renderChartTendencia(LAST.porDia, LAST.de, LAST.ate);
+  renderChartDrillEquipe(LAST.linhas);
+  renderChartRanking(linhas);
+  renderChartRadar(LAST.linhas);
+
+  renderTabela("peTblVend", COLS_VEND, linhas, "faturamento");
+
+  var porEq = {};
+  linhas.forEach(function(r){
+    var e = porEq[r.equipe] || (porEq[r.equipe] = { nome: r.equipe, vendedores: 0,
+      leads:0, vcAgendadas:0, entrevistas:0, bolo:0, valorizados:0, propostas:0,
+      indicacoes:0, cotas:0, faturamento:0, mensagens:0, ligacoes:0 });
+    e.vendedores++;
+    ["leads","vcAgendadas","entrevistas","bolo","valorizados","propostas","indicacoes","cotas","faturamento","mensagens","ligacoes"]
+      .forEach(function(k){ e[k] += r[k] || 0; });
+  });
+  var eqLinhas = Object.keys(porEq).map(function(k){
+    var e = porEq[k]; e.ticket = e.cotas ? e.faturamento / e.cotas : 0;
+    e.txConv = e.entrevistas ? e.cotas / e.entrevistas : 0; e.convLead = e.leads ? e.cotas / e.leads : 0; return e;
+  });
+  renderTabela("peTblEq", COLS_EQ, eqLinhas, "faturamento");
+
+  var sup = linhas.filter(function(r){ return /supervisor/i.test(r.cargo || ""); });
+  renderTabela("peTblSup", COLS_SUP, sup, "faturamento");
+
+  var temManual = LAST.linhas.some(function(r){ return r.mensagens > 0 || r.ligacoes > 0; });
+  $("peAviso").innerHTML = "<b>Sobre Mensagens e Ligacoes:</b> " +
+    (temManual ? "usando campos manuais do relatorio diario." : "campos manuais vazios no CRM. Preencha-os ou libere escopo telephony.") +
+    " Demais numeros vem do funil e historico de etapas.";
+
+  setStatus("Periodo " + LAST.de.split("-").reverse().join("/") + " a " + LAST.ate.split("-").reverse().join("/") +
+    " \u00B7 " + linhas.length + " vendedores \u00B7 " + LAST.dias + " dias uteis");
+}
+
+function atualizar(){
+  var de = $("peDe").value, ate = $("peAte").value;
+  if (!de || !ate) { setStatus("Informe as datas."); return; }
+  if (de > ate) { setStatus("Data inicial maior que final."); return; }
+  $("peGo").disabled = true;
+  var t0 = Date.now();
+  carregarFatos(de, ate)
+    .then(function(dados){
+      setStatus("Calculando...");
+      LAST = calcular(dados, de, ate);
+      pintar();
+      var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      setStatus($("peStatus").textContent + " \u00B7 " + elapsed + "s");
+    })
+    .catch(function(e){ setStatus("Erro: " + e.message); console.error(e); })
+    .then(function(){ $("peGo").disabled = false; });
+}
+
+function setPeriodo(p){
+  var h = new Date(), de, ate = new Date(h);
+  if (p === "hoje") de = new Date(h);
+  else if (p === "7") { de = new Date(h); de.setDate(de.getDate() - 6); }
+  else if (p === "30") { de = new Date(h); de.setDate(de.getDate() - 29); }
+  else if (p === "mesant") { de = new Date(h.getFullYear(), h.getMonth() - 1, 1); ate = new Date(h.getFullYear(), h.getMonth(), 0); }
+  else if (p === "ano") de = new Date(h.getFullYear(), 0, 1);
+  else de = new Date(h.getFullYear(), h.getMonth(), 1);
+  $("peDe").value = iso(de); $("peAte").value = iso(ate);
+}
+
+function exportarCsv(){
+  if (!LAST) return;
+  var linhas = aplicarFiltros(LAST.linhas);
+  var head = ["Vendedor","Equipe","Leads","V.C. agendadas","Entrevistas","Deu bolo","Valorizados",
+    "Indicacoes","Cotas vendidas","Faturamento","Ticket medio","Tx. conversao %",
+    "Venda/10 V.C.","% conv. lead","V.C./lead %","Ligacoes","Mensagens"];
+  var rows = linhas.map(function(r){
+    return [r.nome, r.equipe, r.leads, r.vcAgendadas, r.entrevistas, r.bolo, r.valorizados,
+      r.indicacoes, r.cotas, r.faturamento.toFixed(2).replace(".",","),
+      r.ticket.toFixed(2).replace(".",","), (r.txConv*100).toFixed(2).replace(".",","),
+      r.venda10vc.toFixed(2).replace(".",","), (r.convLead*100).toFixed(2).replace(".",","),
+      (r.vcPorLead*100).toFixed(2).replace(".",","), r.ligacoes, r.mensagens];
+  });
+  var csv = "\uFEFF" + [head].concat(rows).map(function(r){
+    return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(";");
+  }).join("\r\n");
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = "vendedores_" + LAST.de + "_a_" + LAST.ate + ".csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* =====================================================================
+   10. BOOT
+   ===================================================================== */
+initTip();
+$("pePresets").addEventListener("click", function(e){
+  var b = e.target.closest("[data-p]"); if (!b) return;
+  $("pePresets").querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); });
+  b.setAttribute("aria-pressed","true"); setPeriodo(b.getAttribute("data-p")); atualizar();
+});
+["peDe","peAte"].forEach(function(id){
+  $(id).addEventListener("change", function(){ $("pePresets").querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); }); });
+});
+$("peGo").addEventListener("click", atualizar);
+$("peCsv").addEventListener("click", exportarCsv);
+$("peEquipe").addEventListener("change", pintar);
+$("peBusca").addEventListener("input", pintar);
+
+var drillModal = $("peDrillModal");
+if (drillModal) drillModal.addEventListener("click", function(e){
+  if (e.target === drillModal || e.target.classList.contains("modal-close")) drillModal.style.display = "none";
+});
+
+setPeriodo("mes");
+carregarDimensoes().then(atualizar).catch(function(e){ setStatus("ERRO: " + e.message); console.error(e); });
+
+})();
