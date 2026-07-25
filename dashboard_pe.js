@@ -225,18 +225,55 @@ function corEquipe(idx){ return PALETTE[idx % PALETTE.length]; }
 /* =====================================================================
    5. CARGA DAS DIMENSOES (1x, com cache localStorage 24h)
    ===================================================================== */
-function carregarDimensoes(){
-  /* tenta cache localStorage para dimensoes (muda pouco) */
-  var cacheKey = "pe_dim_v2";
-  var cached = null;
-  try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch(e){}
-  if (cached && cached.ts && (Date.now() - cached.ts < 86400000)) {
-    DIM = cached.dim;
-    var sel = $("peEquipe");
+
+/* Popula os selects de equipe e vendedor (limpa antes para evitar duplicidade) */
+function popularFiltros(){
+  var sel = $("peEquipe");
+  if (sel) {
+    /* remove todas options exceto a primeira ("Todas as equipes") */
+    while (sel.options.length > 1) sel.remove(1);
     DIM.equipes.forEach(function(n){
       var o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o);
     });
     var o2 = document.createElement("option"); o2.value = "(sem equipe)"; o2.textContent = "(sem equipe)"; sel.appendChild(o2);
+  }
+
+  /* Popula select de vendedores (se existir como select; senao mantem input texto) */
+  var selVend = $("peBusca");
+  if (selVend && selVend.tagName === "SELECT") {
+    while (selVend.options.length > 1) selVend.remove(1);
+    var nomes = Object.keys(DIM.users).map(function(uid){ return DIM.users[uid]; })
+      .filter(function(u){ return u.ativo; })
+      .sort(function(a,b){ return a.nome.localeCompare(b.nome, "pt-BR"); });
+    nomes.forEach(function(u){
+      var o = document.createElement("option"); o.value = u.nome; o.textContent = u.nome; selVend.appendChild(o);
+    });
+  } else if (selVend && selVend.tagName === "INPUT" && selVend.list === null) {
+    /* Cria datalist para autocomplete no input existente */
+    var dlId = "peVendedoresDatalist";
+    var dl = document.getElementById(dlId);
+    if (!dl) {
+      dl = document.createElement("datalist"); dl.id = dlId;
+      selVend.parentNode.appendChild(dl);
+      selVend.setAttribute("list", dlId);
+    }
+    dl.innerHTML = "";
+    var nomes = Object.keys(DIM.users).map(function(uid){ return DIM.users[uid]; })
+      .filter(function(u){ return u.ativo; })
+      .sort(function(a,b){ return a.nome.localeCompare(b.nome, "pt-BR"); });
+    nomes.forEach(function(u){
+      var o = document.createElement("option"); o.value = u.nome; dl.appendChild(o);
+    });
+  }
+}
+
+function carregarDimensoes(){
+  var cacheKey = "pe_dim_v3";
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch(e){}
+  if (cached && cached.ts && (Date.now() - cached.ts < 86400000)) {
+    DIM = cached.dim;
+    popularFiltros();
     setStatus("Dimensoes carregadas (cache)");
     return Promise.resolve();
   }
@@ -290,11 +327,7 @@ function carregarDimensoes(){
       if (!DIM.agenteEquipe[uid]) DIM.agenteEquipe[uid] = membroEquipe[uid];
     });
     DIM.equipes.sort(function(a,b){ return a.localeCompare(b,"pt-BR"); });
-    var sel = $("peEquipe");
-    DIM.equipes.forEach(function(n){
-      var o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o);
-    });
-    var o2 = document.createElement("option"); o2.value = "(sem equipe)"; o2.textContent = "(sem equipe)"; sel.appendChild(o2);
+    popularFiltros();
 
     /* persiste no localStorage */
     try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), dim: DIM })); } catch(e){}
@@ -743,8 +776,7 @@ function renderChartRadar(linhas){
   });
   var eqs = Object.keys(porEq).filter(function(e){ return e !== "(sem equipe)"; }).slice(0, 6);
   if (eqs.length < 2) { radarEl.innerHTML = ''; return; }
-  var el = $("peChartRadarWrap");
-  if (el) el.innerHTML = '<canvas id="peCanvasRadar" height="300"></canvas>';
+  radarEl.innerHTML = '<canvas id="peCanvasRadar" height="300"></canvas>';
   var datasets = eqs.map(function(eq, i){
     var e = porEq[eq];
     return { label: eq, data: [e.leads, e.vcAgendadas, e.entrevistas, e.cotas, e.indicacoes],
