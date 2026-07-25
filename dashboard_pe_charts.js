@@ -1012,6 +1012,9 @@ function exportarCsv(){
 /* =====================================================================
    10. BOOT
    ===================================================================== */
+/* limpa caches antigos */
+try { localStorage.removeItem("pe_dim_v2"); } catch(e){}
+
 initTip();
 $("pePresets").addEventListener("click", function(e){
   var b = e.target.closest("[data-p]"); if (!b) return;
@@ -1024,7 +1027,8 @@ $("pePresets").addEventListener("click", function(e){
 $("peGo").addEventListener("click", atualizar);
 $("peCsv").addEventListener("click", exportarCsv);
 $("peEquipe").addEventListener("change", pintar);
-$("peBusca").addEventListener("input", pintar);
+var buscaEl = $("peBusca");
+if (buscaEl) buscaEl.addEventListener(buscaEl.tagName === "SELECT" ? "change" : "input", pintar);
 
 var drillModal = $("peDrillModal");
 if (drillModal) drillModal.addEventListener("click", function(e){
