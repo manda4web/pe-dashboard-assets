@@ -1,4 +1,4 @@
-(function(){
+﻿(function(){
 "use strict";
 
 /* =====================================================================
@@ -22,16 +22,16 @@ var CFG = {
   UF_HR_NEGOC: "UF_CRM_1784577700000",    /* campo "HR NEGOC" se existir */
   UF_TIPO_NEGOCIACAO: "UF_CRM_1784577684162", /* Tipo de negociacao */
   UF_COMENTARIO: "UF_CRM_1784577720000",   /* Comentario da ficha */
-  /* Concorrência de requisições REST */
+  /* ConcorrÃªncia de requisiÃ§Ãµes REST */
   MAX_CONCURRENT: 4,     /* chamadas paralelas ao Bitrix (evita throttle 503) */
   BATCH_SIZE: 50,        /* max 50 cmds por batch (limite Bitrix) */
-  PAGE_SIZE: 50          /* itens por pagina padrão */
+  PAGE_SIZE: 50          /* itens por pagina padrÃ£o */
 };
 var ENTREVISTA_STAGES = [CFG.STAGE.VALOR, CFG.STAGE.PROP, CFG.STAGE.WON];
 var HIST_STAGES = [CFG.STAGE.VC, CFG.STAGE.BOLO, CFG.STAGE.VALOR, CFG.STAGE.PROP, CFG.STAGE.WON];
 
 /* =====================================================================
-   2. CAMADA REST OTIMIZADA (concorrência limitada + cache)
+   2. CAMADA REST OTIMIZADA (concorrÃªncia limitada + cache)
    ===================================================================== */
 function toQuery(obj, prefix){
   var parts = [];
@@ -114,7 +114,7 @@ function batch(cmds){
 
 /* =====================================================================
    OTIMIZACAO PRINCIPAL: listAll com paginacao paralela
-   Em vez de sequencial (1 batch de 50 páginas por vez),
+   Em vez de sequencial (1 batch de 50 pÃ¡ginas por vez),
    dispara TODOS os batches em paralelo limitados pelo semaforo.
    Para "Ano" com ~5000 deals: antes ~40s, agora ~12s.
    ===================================================================== */
@@ -268,16 +268,7 @@ function popularFiltros(){
 }
 
 function carregarDimensoes(){
-  var cacheKey = "pe_dim_v3";
-  var cached = null;
-  try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch(e){}
-  if (cached && cached.ts && (Date.now() - cached.ts < 86400000)) {
-    DIM = cached.dim;
-    popularFiltros();
-    setStatus("Dimensoes carregadas (cache)");
-    return Promise.resolve();
-  }
-
+  /* DESABILITA cache localStorage â€” sempre busca fresco para evitar bugs */
   setStatus("Carregando usuarios e equipes...");
   return Promise.all([
     listAll("user.get", {}, function(r){ return r || []; }),
@@ -328,14 +319,11 @@ function carregarDimensoes(){
     });
     DIM.equipes.sort(function(a,b){ return a.localeCompare(b,"pt-BR"); });
     popularFiltros();
-
-    /* persiste no localStorage */
-    try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), dim: DIM })); } catch(e){}
   });
 }
 
 /* =====================================================================
-   6. CARGA DOS FATOS — OTIMIZADA (paralela com progress)
+   6. CARGA DOS FATOS â€” OTIMIZADA (paralela com progress)
    ===================================================================== */
 function carregarFatos(de, ate){
   /* cache em memoria: se ja buscou esse periodo, reutiliza */
@@ -527,7 +515,7 @@ function agregar(linhas){
 
 
 /* =====================================================================
-   8. RENDER — TILES, HERO, FUNIL
+   8. RENDER â€” TILES, HERO, FUNIL
    ===================================================================== */
 function tile(label, value, foot){
   return '<div class="card tile"><div class="label">' + esc(label) + '</div>' +
@@ -560,7 +548,7 @@ function renderEquipeCards(t, dias, titulo, meta){
     tile("Videochamada por lead", pct(t.entrevistas, t.leads), "entrevistas / leads") +
     tile("Deu bolo (no-show)", pct(t.bolo, t.vcAgendadas), nfInt.format(t.bolo) + " de " + nfInt.format(t.vcAgendadas)) +
     tile("Valorizados", nfInt.format(t.valorizados), "passaram por Valorizado") +
-    tile("Venda/10 V.C.", (t.entrevistas ? nfDec.format(t.venda10vc) : "-"), "cotas/entrev × 10") +
+    tile("Venda/10 V.C.", (t.entrevistas ? nfDec.format(t.venda10vc) : "-"), "cotas/entrev Ã— 10") +
     tile("Indicacoes", nfInt.format(t.indicacoes), "leads por recomendacao");
 }
 
@@ -600,7 +588,7 @@ function renderFunil(t){
 }
 
 /* =====================================================================
-   8B. CHART.JS — GRAFICOS INTERATIVOS
+   8B. CHART.JS â€” GRAFICOS INTERATIVOS
    ===================================================================== */
 
 /* Fallback: barras CSS para quando Chart.js ou containers novos nao existem */
@@ -631,13 +619,11 @@ function makeChart(canvasId, config){
 /* Grafico 1: Barras horizontais - Entrevistas */
 function renderChartEntrevistas(linhas){
   var el = $("peChartEntrevWrap");
-  /* fallback: se o container novo nao existe, tenta barras CSS no container antigo */
-  if (!el) { renderBarrasFallback("peChartEntrev", linhas, "entrevistas", function(v){ return nfInt.format(v); }); return; }
+  if (!el || !HAS_CHARTJS) { renderBarrasFallback(el ? "peChartEntrevWrap" : "peChartEntrev", linhas, "entrevistas", function(v){ return nfInt.format(v); }); return; }
   var dados = linhas.slice().sort(function(a,b){ return b.entrevistas - a.entrevistas; })
     .filter(function(r){ return r.entrevistas > 0; }).slice(0, CFG.TOP_BARRAS);
   if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
   el.innerHTML = '<canvas id="peCanvasEntrev" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
-  if (typeof Chart === "undefined") { renderBarrasFallback("peChartEntrevWrap", linhas, "entrevistas", function(v){ return nfInt.format(v); }); return; }
   makeChart("peCanvasEntrev", {
     type: "bar",
     data: { labels: dados.map(function(r){ return r.nome; }),
@@ -655,12 +641,11 @@ function renderChartEntrevistas(linhas){
 /* Grafico 2: Barras horizontais - Faturamento */
 function renderChartFaturamento(linhas){
   var el = $("peChartFatWrap");
-  if (!el) { renderBarrasFallback("peChartFat", linhas, "faturamento", moneyShort); return; }
+  if (!el || !HAS_CHARTJS) { renderBarrasFallback(el ? "peChartFatWrap" : "peChartFat", linhas, "faturamento", moneyShort); return; }
   var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
     .filter(function(r){ return r.faturamento > 0; }).slice(0, CFG.TOP_BARRAS);
   if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados.</div>'; return; }
   el.innerHTML = '<canvas id="peCanvasFat" height="' + Math.max(280, dados.length * 32) + '"></canvas>';
-  if (typeof Chart === "undefined") { renderBarrasFallback("peChartFatWrap", linhas, "faturamento", moneyShort); return; }
   makeChart("peCanvasFat", {
     type: "bar",
     data: { labels: dados.map(function(r){ return r.nome; }),
@@ -679,7 +664,7 @@ function renderChartFaturamento(linhas){
 /* Grafico 3: Tendencia diaria (faturamento acum + leads + entrevistas) */
 function renderChartTendencia(porDia, de, ate){
   var el = $("peChartTrendWrap");
-  if (!el || typeof Chart === "undefined") return;
+  if (!el || !HAS_CHARTJS) return;
   var dias = [], dAtual = new Date(de + "T00:00:00"), dFim = new Date(ate + "T00:00:00");
   while (dAtual <= dFim) { dias.push(iso(dAtual)); dAtual.setDate(dAtual.getDate() + 1); }
   var fatAcum = 0, dataFatAcum = [], dataLeads = [], dataEntrev = [];
@@ -712,7 +697,7 @@ function renderChartTendencia(porDia, de, ate){
 /* Grafico 4: Drill-down por equipe */
 function renderChartDrillEquipe(linhas){
   var el = $("peChartDrillWrap");
-  if (!el || typeof Chart === "undefined") return;
+  if (!el || !HAS_CHARTJS) return;
   var porEq = {};
   linhas.forEach(function(r){
     if (!porEq[r.equipe]) porEq[r.equipe] = { cotas: 0, entrevistas: 0, faturamento: 0, leads: 0, vcAgendadas: 0 };
@@ -742,7 +727,7 @@ function renderChartDrillEquipe(linhas){
 /* Grafico 5: Ranking animado Top 10 */
 function renderChartRanking(linhas){
   var el = $("peChartRankWrap");
-  if (!el || typeof Chart === "undefined") return;
+  if (!el || !HAS_CHARTJS) return;
   var dados = linhas.slice().sort(function(a,b){ return b.faturamento - a.faturamento; })
     .filter(function(r){ return r.faturamento > 0; }).slice(0, 10);
   if (!dados.length) { el.innerHTML = '<div class="empty">Sem dados para ranking.</div>'; return; }
@@ -766,7 +751,7 @@ function renderChartRanking(linhas){
 /* Grafico 6 (NOVO): Radar comparativo de equipes */
 function renderChartRadar(linhas){
   var radarEl = $("peChartRadarWrap");
-  if (!radarEl || typeof Chart === "undefined") return;
+  if (!radarEl || !HAS_CHARTJS) return;
   var porEq = {};
   linhas.forEach(function(r){
     if (!porEq[r.equipe]) porEq[r.equipe] = { entrevistas:0, cotas:0, leads:0, indicacoes:0, vcAgendadas:0 };
@@ -1013,20 +998,28 @@ function exportarCsv(){
    10. BOOT
    ===================================================================== */
 /* limpa caches antigos */
-try { localStorage.removeItem("pe_dim_v2"); } catch(e){}
+try { localStorage.removeItem("pe_dim_v2"); localStorage.removeItem("pe_dim_v3"); } catch(e){}
+
+/* verifica se Chart.js carregou */
+var HAS_CHARTJS = (typeof Chart !== "undefined");
+if (!HAS_CHARTJS) {
+  console.warn("[PE Dashboard] Chart.js nao carregou. Graficos usarao barras CSS.");
+}
 
 initTip();
-$("pePresets").addEventListener("click", function(e){
+
+var presetsEl = $("pePresets");
+if (presetsEl) presetsEl.addEventListener("click", function(e){
   var b = e.target.closest("[data-p]"); if (!b) return;
-  $("pePresets").querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); });
+  presetsEl.querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); });
   b.setAttribute("aria-pressed","true"); setPeriodo(b.getAttribute("data-p")); atualizar();
 });
 ["peDe","peAte"].forEach(function(id){
-  $(id).addEventListener("change", function(){ $("pePresets").querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); }); });
+  var el = $(id); if (el) el.addEventListener("change", function(){ if (presetsEl) presetsEl.querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); }); });
 });
-$("peGo").addEventListener("click", atualizar);
-$("peCsv").addEventListener("click", exportarCsv);
-$("peEquipe").addEventListener("change", pintar);
+var goEl = $("peGo"); if (goEl) goEl.addEventListener("click", atualizar);
+var csvEl = $("peCsv"); if (csvEl) csvEl.addEventListener("click", exportarCsv);
+var eqEl = $("peEquipe"); if (eqEl) eqEl.addEventListener("change", pintar);
 var buscaEl = $("peBusca");
 if (buscaEl) buscaEl.addEventListener(buscaEl.tagName === "SELECT" ? "change" : "input", pintar);
 
@@ -1039,3 +1032,4 @@ setPeriodo("mes");
 carregarDimensoes().then(atualizar).catch(function(e){ setStatus("ERRO: " + e.message); console.error(e); });
 
 })();
+
