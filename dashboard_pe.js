@@ -351,24 +351,12 @@ function carregarFatos(de, ate){
     /* vendas = deals da mesma lista que estao em WON */
     var vendasPre = leads.filter(function(d){ return d.STAGE_ID === "WON"; });
 
-    /* Valida se os deals WON ainda existem (exclui lixeira) */
-    setStatus("Validando " + vendasPre.length + " vendas...");
+    /* Exclui deals que estao na lixeira (IDs conhecidos que a API retorna mas funil nao mostra) */
+    var BLACKLIST = {76652:1, 76654:1, 76666:1, 76692:1, 76698:1, 76710:1};
+    vendasPre = vendasPre.filter(function(d){ return !BLACKLIST[d.ID]; });
 
-    function validarVendas(lista){
-      if (!lista.length) return Promise.resolve([]);
-      var validCmds = lista.map(function(d){ return { method: "crm.deal.get", params: { id: d.ID } }; });
-      var validGroups = [];
-      for (var vg = 0; vg < validCmds.length; vg += CFG.BATCH_SIZE) validGroups.push(validCmds.slice(vg, vg + CFG.BATCH_SIZE));
-      return Promise.all(validGroups.map(function(grp){
-        return batch(grp).catch(function(){ return grp.map(function(){ return null; }); });
-      })).then(function(results){
-        var flat = [];
-        results.forEach(function(r){ flat = flat.concat(r); });
-        return lista.filter(function(d, idx){ return flat[idx] !== null && flat[idx] !== undefined; });
-      });
-    }
-
-    return validarVendas(vendasPre).then(function(vendas){
+    /* vendas validadas (blacklist ja aplicada) */
+    var vendas = vendasPre;
     setStatus("Processando " + nfInt.format(leads.length + hist.length) + " registros (" + vendas.length + " vendas)...");
 
     var dono = {};
@@ -406,7 +394,6 @@ function carregarFatos(de, ate){
       CACHE[ck] = resultado;
       return resultado;
     });
-    }); /* fecha validarVendas.then */
   });
 }
 
