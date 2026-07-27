@@ -344,7 +344,10 @@ function carregarFatos(de, ate){
       select: ["ID","OWNER_ID","CREATED_TIME","STAGE_ID"], order: { ID: "ASC" }
     }, function(r){ return (r && r.items) || []; })
   ]).then(function(res){
-    var leads = res[0], hist = res[2];
+    var leads = res[0].filter(function(d){
+      var dc = (d.DATE_CREATE || "").substring(0, 10);
+      return dc >= de && dc <= ate;
+    }), hist = res[2];
     /* vendas = deals da mesma lista que estao em WON */
     var vendas = leads.filter(function(d){ return d.STAGE_ID === "WON"; });
     setStatus("Processando " + nfInt.format(leads.length + hist.length) + " registros (" + vendas.length + " vendas)...");
