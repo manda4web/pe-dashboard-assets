@@ -355,8 +355,35 @@ function carregarFatos(de, ate){
     var BLACKLIST = {76652:1, 76654:1, 76666:1, 76698:1, 76710:1};
     vendasPre = vendasPre.filter(function(d){ return !BLACKLIST[d.ID]; });
 
-    /* vendas validadas (blacklist ja aplicada) */
-    var vendas = vendasPre;
+    /* Rebusca valores atualizados dos deals WON (valor pode ter mudado desde a criacao) */
+    function rebuscarValores(lista){
+      if (!lista.length) return Promise.resolve(lista);
+      var ids = lista.map(function(d){ return d.ID; });
+      var cmdsV = [];
+      for (var vi = 0; !(vi >= ids.length); vi += 50) {
+        cmdsV.push({ method: "crm.deal.list", params: {
+          filter: { "@ID": ids.slice(vi, vi + 50) },
+          select: ["ID","OPPORTUNITY"]
+        }});
+      }
+      var groupsV = [];
+      for (var gv = 0; !(gv >= cmdsV.length); gv += CFG.BATCH_SIZE) groupsV.push(cmdsV.slice(gv, gv + CFG.BATCH_SIZE));
+      return Promise.all(groupsV.map(function(grp){ return batch(grp); })).then(function(results){
+        var valMap = {};
+        results.forEach(function(batchRes){
+          batchRes.forEach(function(arr){
+            (arr || []).forEach(function(d){ valMap[String(d.ID)] = d.OPPORTUNITY; });
+          });
+        });
+        lista.forEach(function(d){
+          if (valMap[String(d.ID)] !== undefined) d.OPPORTUNITY = valMap[String(d.ID)];
+        });
+        return lista;
+      });
+    }
+
+    return rebuscarValores(vendasPre).then(function(vendas){
+    /* vendas validadas com valores atualizados */
     setStatus("Processando " + nfInt.format(leads.length + hist.length) + " registros (" + vendas.length + " vendas)...");
 
     var dono = {};
@@ -394,6 +421,7 @@ function carregarFatos(de, ate){
       CACHE[ck] = resultado;
       return resultado;
     });
+    }); /* fecha rebuscarValores.then */
   });
 }
 
