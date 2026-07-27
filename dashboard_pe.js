@@ -325,35 +325,32 @@ function carregarFatos(de, ate){
   } else {
     d1 = ate + " 23:59:59";
   }
-  var selLead = ["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE",
+  var selLead = ["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE","STAGE_ID","OPPORTUNITY",
                  CFG.UF.TIPO_VENDA, CFG.UF.IND, CFG.UF.ENTREV, CFG.UF.LIG, CFG.UF.MSG];
 
   setStatus("Buscando negocios do periodo...");
 
-  /* Dispara as 3 buscas em PARALELO (leads, vendas, historico) */
+  /* Busca UNICA: todos os deals criados no periodo (sem filtro de stage - bug da API) */
   return Promise.all([
     listAll("crm.deal.list", {
       filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y" },
       select: selLead, order: { ID: "ASC" }
     }),
-    /* vendas: busca TODOS os deals criados no periodo e filtra WON no codigo
-       (a API do Bitrix tem bug com STAGE_ID + DATE_CREATE simultaneos) */
-    listAll("crm.deal.list", {
-      filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y", STAGE_SEMANTIC_ID: "S" },
-      select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","DATE_CREATE","STAGE_ID"], order: { ID: "ASC" }
-    }),
+    /* vendas vem da mesma lista (filtrado por STAGE_ID no codigo) */
+    Promise.resolve([]),
     listAll("crm.stagehistory.list", {
       entityTypeId: 2,
       filter: { CATEGORY_ID: CFG.CATEGORY, "@STAGE_ID": HIST_STAGES, ">=CREATED_TIME": d0, "<=CREATED_TIME": d1 },
       select: ["ID","OWNER_ID","CREATED_TIME","STAGE_ID"], order: { ID: "ASC" }
     }, function(r){ return (r && r.items) || []; })
   ]).then(function(res){
-    var leads = res[0], vendas = res[1], hist = res[2];
-    setStatus("Processando " + nfInt.format(leads.length + vendas.length + hist.length) + " registros...");
+    var leads = res[0], hist = res[2];
+    /* vendas = deals da mesma lista que estao em WON */
+    var vendas = leads.filter(function(d){ return d.STAGE_ID === "WON"; });
+    setStatus("Processando " + nfInt.format(leads.length + hist.length) + " registros (" + vendas.length + " vendas)...");
 
     var dono = {};
     leads.forEach(function(d){ dono[String(d.ID)] = String(d.ASSIGNED_BY_ID); });
-    vendas.forEach(function(d){ dono[String(d.ID)] = String(d.ASSIGNED_BY_ID); });
     var faltando = [];
     hist.forEach(function(h){
       var id = String(h.OWNER_ID);
