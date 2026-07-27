@@ -358,28 +358,20 @@ function carregarFatos(de, ate){
     /* Rebusca valores atualizados dos deals WON (valor pode ter mudado desde a criacao) */
     function rebuscarValores(lista){
       if (!lista.length) return Promise.resolve(lista);
-      var ids = lista.map(function(d){ return d.ID; });
-      var cmdsV = [];
-      for (var vi = 0; !(vi >= ids.length); vi += 50) {
-        cmdsV.push({ method: "crm.deal.list", params: {
-          filter: { "@ID": ids.slice(vi, vi + 50) },
-          select: ["ID","OPPORTUNITY"]
-        }});
-      }
-      var groupsV = [];
-      for (var gv = 0; !(gv >= cmdsV.length); gv += CFG.BATCH_SIZE) groupsV.push(cmdsV.slice(gv, gv + CFG.BATCH_SIZE));
-      return Promise.all(groupsV.map(function(grp){ return batch(grp); })).then(function(results){
-        var valMap = {};
-        results.forEach(function(batchRes){
-          batchRes.forEach(function(arr){
-            (arr || []).forEach(function(d){ valMap[String(d.ID)] = d.OPPORTUNITY; });
-          });
-        });
-        lista.forEach(function(d){
-          if (valMap[String(d.ID)] !== undefined) d.OPPORTUNITY = valMap[String(d.ID)];
+      /* Usa crm.deal.get individual em batch para pegar valor atualizado */
+      var getCmds = lista.map(function(d){ return { method: "crm.deal.get", params: { id: d.ID } }; });
+      var getGroups = [];
+      for (var gi = 0; !(gi >= getCmds.length); gi += CFG.BATCH_SIZE) getGroups.push(getCmds.slice(gi, gi + CFG.BATCH_SIZE));
+      return Promise.all(getGroups.map(function(grp){ return batch(grp); })).then(function(results){
+        var flat = [];
+        results.forEach(function(r){ flat = flat.concat(r); });
+        flat.forEach(function(dealData, idx){
+          if (dealData && dealData.OPPORTUNITY) {
+            lista[idx].OPPORTUNITY = dealData.OPPORTUNITY;
+          }
         });
         return lista;
-      });
+      }).catch(function(){ return lista; }); /* se falhar, usa valores originais */
     }
 
     return rebuscarValores(vendasPre).then(function(vendas){
