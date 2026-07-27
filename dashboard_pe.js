@@ -371,7 +371,7 @@ function carregarFatos(de, ate){
           }
         });
         return lista;
-      }).catch(function(){ return lista; }); /* se falhar, usa valores originais */
+      }).catch(function(e){ console.error("[PE] rebuscarValores falhou:", e); return lista; }); /* se falhar, usa valores originais */
     }
 
     return rebuscarValores(vendasPre).then(function(vendas){
