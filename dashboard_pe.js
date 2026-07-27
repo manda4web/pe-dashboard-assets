@@ -328,8 +328,8 @@ function carregarFatos(de, ate){
       select: selLead, order: { ID: "ASC" }
     }),
     listAll("crm.deal.list", {
-      filter: { CATEGORY_ID: CFG.CATEGORY, STAGE_SEMANTIC_ID: "S", ">=CLOSEDATE": d0, "<=CLOSEDATE": d1 },
-      select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","CLOSEDATE"], order: { ID: "ASC" }
+      filter: { CATEGORY_ID: CFG.CATEGORY, STAGE_SEMANTIC_ID: "S", ">=DATE_CREATE": d0, "<=DATE_CREATE": d1 },
+      select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","CLOSEDATE","DATE_CREATE"], order: { ID: "ASC" }
     }),
     listAll("crm.stagehistory.list", {
       entityTypeId: 2,
