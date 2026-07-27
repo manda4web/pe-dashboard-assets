@@ -336,9 +336,11 @@ function carregarFatos(de, ate){
       filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y" },
       select: selLead, order: { ID: "ASC" }
     }),
+    /* vendas: busca TODOS os deals criados no periodo e filtra WON no codigo
+       (a API do Bitrix tem bug com STAGE_ID + DATE_CREATE simultaneos) */
     listAll("crm.deal.list", {
-      filter: { CATEGORY_ID: CFG.CATEGORY, STAGE_ID: "WON", ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y" },
-      select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","CLOSEDATE","DATE_CREATE"], order: { ID: "ASC" }
+      filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y", STAGE_SEMANTIC_ID: "S" },
+      select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","DATE_CREATE","STAGE_ID"], order: { ID: "ASC" }
     }),
     listAll("crm.stagehistory.list", {
       entityTypeId: 2,
@@ -420,6 +422,7 @@ function calcular(dados, de, ate){
   });
 
   dados.vendas.forEach(function(d){
+    if (d.STAGE_ID !== "WON") return; /* filtra apenas etapa WON */
     var r = linha(String(d.ASSIGNED_BY_ID));
     r.cotas++;
     r.faturamento += parseFloat(d.OPPORTUNITY) || 0;
@@ -438,6 +441,7 @@ function calcular(dados, de, ate){
     if (ENTREVISTA_STAGES.indexOf(st) >= 0 && !vistos.entrev[k]) { vistos.entrev[k] = 1; r.entrevistas++; }
   });
   dados.vendas.forEach(function(d){
+    if (d.STAGE_ID !== "WON") return;
     var uid = String(d.ASSIGNED_BY_ID), k = uid + "|" + String(d.ID);
     if (!vistos.entrev[k]) { vistos.entrev[k] = 1; linha(uid).entrevistas++; }
   });
@@ -464,7 +468,8 @@ function calcular(dados, de, ate){
   /* serie temporal por dia */
   var porDia = {};
   dados.vendas.forEach(function(d){
-    var dia = (d.CLOSEDATE || "").substring(0, 10);
+    if (d.STAGE_ID !== "WON") return;
+    var dia = (d.DATE_CREATE || "").substring(0, 10);
     if (!dia) return;
     if (!porDia[dia]) porDia[dia] = { fat: 0, cotas: 0, leads: 0, entrevistas: 0 };
     porDia[dia].fat += parseFloat(d.OPPORTUNITY) || 0;
