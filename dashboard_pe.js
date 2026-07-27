@@ -355,23 +355,19 @@ function carregarFatos(de, ate){
     var BLACKLIST = {76652:1, 76654:1, 76666:1, 76698:1, 76710:1};
     var vendas = vendasPre.filter(function(d){ return !BLACKLIST[d.ID]; });
 
-    /* Busca valores ATUALIZADOS dos deals WON via crm.deal.list com filtro @ID (sem STAGE_ID) */
-    function atualizarValoresWon(vendas){
-      if (!vendas.length) return Promise.resolve(vendas);
-      var ids = vendas.map(function(d){ return d.ID; });
-      return call("crm.deal.list", {
-        filter: { "@ID": ids },
-        select: ["ID", "OPPORTUNITY"],
-        order: { ID: "ASC" }
-      }).then(function(j){
-        var items = j.result || [];
-        var valMap = {};
-        items.forEach(function(d){ valMap[String(d.ID)] = d.OPPORTUNITY; });
-        vendas.forEach(function(d){
-          if (valMap[String(d.ID)] !== undefined) d.OPPORTUNITY = valMap[String(d.ID)];
+    /* Busca valor ATUALIZADO de cada deal WON via crm.deal.get em batch */
+    function atualizarValoresWon(lista){
+      if (!lista.length) return Promise.resolve(lista);
+      var cmd = {};
+      lista.forEach(function(d, i){ cmd["c" + i] = "crm.deal.get?id=" + d.ID; });
+      return call("batch", { halt: 0, cmd: cmd }).then(function(j){
+        var res = (j.result && j.result.result) || {};
+        lista.forEach(function(d, i){
+          var r = res["c" + i];
+          if (r && r.OPPORTUNITY) d.OPPORTUNITY = r.OPPORTUNITY;
         });
-        return vendas;
-      }).catch(function(){ return vendas; });
+        return lista;
+      }).catch(function(e){ console.warn("[PE] atualizarValoresWon falhou:", e.message); return lista; });
     }
 
     return atualizarValoresWon(vendas).then(function(vendas){
