@@ -353,29 +353,28 @@ function carregarFatos(de, ate){
 
     /* Exclui deals que estao na lixeira (IDs conhecidos que a API retorna mas funil nao mostra) */
     var BLACKLIST = {76652:1, 76654:1, 76666:1, 76698:1, 76710:1};
-    vendasPre = vendasPre.filter(function(d){ return !BLACKLIST[d.ID]; });
+    var vendas = vendasPre.filter(function(d){ return !BLACKLIST[d.ID]; });
 
-    /* Rebusca valores atualizados dos deals WON (valor pode ter mudado desde a criacao) */
-    function rebuscarValores(lista){
-      if (!lista.length) return Promise.resolve(lista);
-      /* Usa crm.deal.get individual em batch para pegar valor atualizado */
-      var getCmds = lista.map(function(d){ return { method: "crm.deal.get", params: { id: d.ID } }; });
-      var getGroups = [];
-      for (var gi = 0; !(gi >= getCmds.length); gi += CFG.BATCH_SIZE) getGroups.push(getCmds.slice(gi, gi + CFG.BATCH_SIZE));
-      return Promise.all(getGroups.map(function(grp){ return batch(grp); })).then(function(results){
-        var flat = [];
-        results.forEach(function(r){ flat = flat.concat(r); });
-        flat.forEach(function(dealData, idx){
-          if (dealData && dealData.OPPORTUNITY) {
-            lista[idx].OPPORTUNITY = dealData.OPPORTUNITY;
-          }
+    /* Busca valores ATUALIZADOS dos deals WON via crm.deal.list com filtro @ID (sem STAGE_ID) */
+    function atualizarValoresWon(vendas){
+      if (!vendas.length) return Promise.resolve(vendas);
+      var ids = vendas.map(function(d){ return d.ID; });
+      return call("crm.deal.list", {
+        filter: { "@ID": ids },
+        select: ["ID", "OPPORTUNITY"],
+        order: { ID: "ASC" }
+      }).then(function(j){
+        var items = j.result || [];
+        var valMap = {};
+        items.forEach(function(d){ valMap[String(d.ID)] = d.OPPORTUNITY; });
+        vendas.forEach(function(d){
+          if (valMap[String(d.ID)] !== undefined) d.OPPORTUNITY = valMap[String(d.ID)];
         });
-        return lista;
-      }).catch(function(e){ console.error("[PE] rebuscarValores falhou:", e); return lista; }); /* se falhar, usa valores originais */
+        return vendas;
+      }).catch(function(){ return vendas; });
     }
 
-    return rebuscarValores(vendasPre).then(function(vendas){
-    /* vendas validadas com valores atualizados */
+    return atualizarValoresWon(vendas).then(function(vendas){
     setStatus("Processando " + nfInt.format(leads.length + hist.length) + " registros (" + vendas.length + " vendas)...");
 
     var dono = {};
@@ -413,7 +412,7 @@ function carregarFatos(de, ate){
       CACHE[ck] = resultado;
       return resultado;
     });
-    }); /* fecha rebuscarValores.then */
+    }); /* fecha atualizarValoresWon.then */
   });
 }
 
