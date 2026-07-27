@@ -399,7 +399,7 @@ function novaLinha(uid){
     id: uid, nome: u.nome, cargo: u.cargo,
     equipe: DIM.agenteEquipe[uid] || "(sem equipe)",
     leads: 0, vcAgendadas: 0, entrevistas: 0, bolo: 0, valorizados: 0, propostas: 0,
-    indicacoes: 0, cotas: 0, faturamento: 0, mensagens: 0, ligacoes: 0,
+    indicacoes: 0, repescagem: 0, recompra: 0, cotas: 0, faturamento: 0, mensagens: 0, ligacoes: 0,
     /* NOVOS indicadores */
     perdidos: 0, emAndamento: 0, valorTotal: 0
   };
@@ -416,7 +416,10 @@ function calcular(dados, de, ate){
   dados.leads.forEach(function(d){
     var r = linha(String(d.ASSIGNED_BY_ID));
     r.leads++;
-    if (d.SOURCE_ID === "RECOMMENDATION" || String(d[CFG.UF.TIPO_VENDA] || "") === CFG.UF.TIPO_VENDA_INDICACAO) r.indicacoes++;
+    var tipoVenda = String(d[CFG.UF.TIPO_VENDA] || "");
+    if (d.SOURCE_ID === "RECOMMENDATION" || tipoVenda === "694") r.indicacoes++;
+    if (tipoVenda === "692") r.repescagem++;
+    if (tipoVenda === "696") r.recompra++;
     r.mensagens += parseFloat(d[CFG.UF.MSG]) || 0;
     r.ligacoes  += parseFloat(d[CFG.UF.LIG]) || 0;
   });
@@ -500,7 +503,7 @@ function calcular(dados, de, ate){
 
 function agregar(linhas){
   var t = { leads:0, vcAgendadas:0, entrevistas:0, bolo:0, valorizados:0, propostas:0,
-            indicacoes:0, cotas:0, faturamento:0, mensagens:0, ligacoes:0 };
+            indicacoes:0, repescagem:0, recompra:0, cotas:0, faturamento:0, mensagens:0, ligacoes:0 };
   linhas.forEach(function(r){ Object.keys(t).forEach(function(k){ t[k] += r[k] || 0; }); });
   t.ticket        = t.cotas ? t.faturamento / t.cotas : 0;
   t.txConv        = t.entrevistas ? t.cotas / t.entrevistas : 0;
@@ -548,7 +551,9 @@ function renderEquipeCards(t, dias, titulo, meta){
     tile("Deu bolo (no-show)", pct(t.bolo, t.vcAgendadas), nfInt.format(t.bolo) + " de " + nfInt.format(t.vcAgendadas)) +
     tile("Valorizados", nfInt.format(t.valorizados), "passaram por Valorizado") +
     tile("Venda/10 V.C.", (t.entrevistas ? nfDec.format(t.venda10vc) : "-"), "cotas/entrev Ã— 10") +
-    tile("Indicacoes", nfInt.format(t.indicacoes), "leads por recomendacao");
+    tile("Indicacoes", nfInt.format(t.indicacoes), "leads por recomendacao") +
+    tile("Repescagem", nfInt.format(t.repescagem), "tipo venda = Repescagem") +
+    tile("Re-Compra", nfInt.format(t.recompra), "tipo venda = Re-Compra");
 }
 
 function renderHero(t, meta){
@@ -720,6 +725,8 @@ var COLS_VEND = [
   { k:"bolo",        t:"Deu bolo",       f:function(r){ return nfInt.format(r.bolo); },         sum:"int" },
   { k:"valorizados", t:"Valorizados",    f:function(r){ return nfInt.format(r.valorizados); },  sum:"int" },
   { k:"indicacoes",  t:"Indicacoes",     f:function(r){ return nfInt.format(r.indicacoes); },   sum:"int" },
+  { k:"repescagem",  t:"Repescagem",     f:function(r){ return nfInt.format(r.repescagem); },   sum:"int" },
+  { k:"recompra",    t:"Re-Compra",      f:function(r){ return nfInt.format(r.recompra); },     sum:"int" },
   { k:"cotas",       t:"Cotas vend.",    f:function(r){ return nfInt.format(r.cotas); },        sum:"int" },
   { k:"faturamento", t:"Faturamento",    f:function(r){ return money(r.faturamento); },         sum:"money" },
   { k:"ticket",      t:"Ticket medio",   f:function(r){ return r.cotas ? money(r.ticket) : "-"; },  sum:"calcTicket" },
@@ -829,9 +836,9 @@ function pintar(){
   linhas.forEach(function(r){
     var e = porEq[r.equipe] || (porEq[r.equipe] = { nome: r.equipe, vendedores: 0,
       leads:0, vcAgendadas:0, entrevistas:0, bolo:0, valorizados:0, propostas:0,
-      indicacoes:0, cotas:0, faturamento:0, mensagens:0, ligacoes:0 });
+      indicacoes:0, repescagem:0, recompra:0, cotas:0, faturamento:0, mensagens:0, ligacoes:0 });
     e.vendedores++;
-    ["leads","vcAgendadas","entrevistas","bolo","valorizados","propostas","indicacoes","cotas","faturamento","mensagens","ligacoes"]
+    ["leads","vcAgendadas","entrevistas","bolo","valorizados","propostas","indicacoes","repescagem","recompra","cotas","faturamento","mensagens","ligacoes"]
       .forEach(function(k){ e[k] += r[k] || 0; });
   });
   var eqLinhas = Object.keys(porEq).map(function(k){
@@ -886,11 +893,11 @@ function exportarCsv(){
   if (!LAST) return;
   var linhas = aplicarFiltros(LAST.linhas);
   var head = ["Vendedor","Equipe","Leads","V.C. agendadas","Entrevistas","Deu bolo","Valorizados",
-    "Indicacoes","Cotas vendidas","Faturamento","Ticket medio","Tx. conversao %",
+    "Indicacoes","Repescagem","Re-Compra","Cotas vendidas","Faturamento","Ticket medio","Tx. conversao %",
     "Venda/10 V.C.","% conv. lead","V.C./lead %","Ligacoes","Mensagens"];
   var rows = linhas.map(function(r){
     return [r.nome, r.equipe, r.leads, r.vcAgendadas, r.entrevistas, r.bolo, r.valorizados,
-      r.indicacoes, r.cotas, r.faturamento.toFixed(2).replace(".",","),
+      r.indicacoes, r.repescagem, r.recompra, r.cotas, r.faturamento.toFixed(2).replace(".",","),
       r.ticket.toFixed(2).replace(".",","), (r.txConv*100).toFixed(2).replace(".",","),
       r.venda10vc.toFixed(2).replace(".",","), (r.convLead*100).toFixed(2).replace(".",","),
       (r.vcPorLead*100).toFixed(2).replace(".",","), r.ligacoes, r.mensagens];
