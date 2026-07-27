@@ -333,11 +333,11 @@ function carregarFatos(de, ate){
   /* Dispara as 3 buscas em PARALELO (leads, vendas, historico) */
   return Promise.all([
     listAll("crm.deal.list", {
-      filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1 },
+      filter: { CATEGORY_ID: CFG.CATEGORY, ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y" },
       select: selLead, order: { ID: "ASC" }
     }),
     listAll("crm.deal.list", {
-      filter: { CATEGORY_ID: CFG.CATEGORY, STAGE_ID: "WON", ">=DATE_CREATE": d0, "<=DATE_CREATE": d1 },
+      filter: { CATEGORY_ID: CFG.CATEGORY, STAGE_ID: "WON", ">=DATE_CREATE": d0, "<=DATE_CREATE": d1, "!IS_RECURRING": "Y" },
       select: ["ID","ASSIGNED_BY_ID","OPPORTUNITY","CLOSEDATE","DATE_CREATE"], order: { ID: "ASC" }
     }),
     listAll("crm.stagehistory.list", {
