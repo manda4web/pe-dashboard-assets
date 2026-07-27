@@ -349,7 +349,26 @@ function carregarFatos(de, ate){
       return dc >= de && dc <= ate;
     }), hist = res[2];
     /* vendas = deals da mesma lista que estao em WON */
-    var vendas = leads.filter(function(d){ return d.STAGE_ID === "WON"; });
+    var vendasPre = leads.filter(function(d){ return d.STAGE_ID === "WON"; });
+
+    /* Valida se os deals WON ainda existem (exclui lixeira) */
+    setStatus("Validando " + vendasPre.length + " vendas...");
+
+    function validarVendas(lista){
+      if (!lista.length) return Promise.resolve([]);
+      var validCmds = lista.map(function(d){ return { method: "crm.deal.get", params: { id: d.ID } }; });
+      var validGroups = [];
+      for (var vg = 0; vg < validCmds.length; vg += CFG.BATCH_SIZE) validGroups.push(validCmds.slice(vg, vg + CFG.BATCH_SIZE));
+      return Promise.all(validGroups.map(function(grp){
+        return batch(grp).catch(function(){ return grp.map(function(){ return null; }); });
+      })).then(function(results){
+        var flat = [];
+        results.forEach(function(r){ flat = flat.concat(r); });
+        return lista.filter(function(d, idx){ return flat[idx] !== null && flat[idx] !== undefined; });
+      });
+    }
+
+    return validarVendas(vendasPre).then(function(vendas){
     setStatus("Processando " + nfInt.format(leads.length + hist.length) + " registros (" + vendas.length + " vendas)...");
 
     var dono = {};
@@ -387,6 +406,7 @@ function carregarFatos(de, ate){
       CACHE[ck] = resultado;
       return resultado;
     });
+    }); /* fecha validarVendas.then */
   });
 }
 
