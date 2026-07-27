@@ -352,7 +352,7 @@ function carregarFatos(de, ate){
     var vendasPre = leads.filter(function(d){ return d.STAGE_ID === "WON"; });
 
     /* Exclui deals que estao na lixeira (IDs conhecidos que a API retorna mas funil nao mostra) */
-    var BLACKLIST = {76652:1, 76654:1, 76666:1, 76692:1, 76698:1, 76710:1};
+    var BLACKLIST = {76652:1, 76654:1, 76666:1, 76698:1, 76710:1};
     vendasPre = vendasPre.filter(function(d){ return !BLACKLIST[d.ID]; });
 
     /* vendas validadas (blacklist ja aplicada) */
