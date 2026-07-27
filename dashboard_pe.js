@@ -315,7 +315,16 @@ function carregarFatos(de, ate){
   var ck = de + "|" + ate;
   if (CACHE[ck]) { setStatus("Dados do cache..."); return Promise.resolve(CACHE[ck]); }
 
-  var d0 = de + " 00:00:00", d1 = ate + " 23:59:59";
+  /* Se a data "ate" for hoje, usa hora atual (para bater com o Bitrix) */
+  var agora = new Date();
+  var hojeFmt = iso(agora);
+  var d0 = de + " 00:00:00";
+  var d1;
+  if (ate === hojeFmt) {
+    d1 = ate + " " + String(agora.getHours()).padStart(2,"0") + ":" + String(agora.getMinutes()).padStart(2,"0") + ":" + String(agora.getSeconds()).padStart(2,"0");
+  } else {
+    d1 = ate + " 23:59:59";
+  }
   var selLead = ["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE",
                  CFG.UF.TIPO_VENDA, CFG.UF.IND, CFG.UF.ENTREV, CFG.UF.LIG, CFG.UF.MSG];
 
