@@ -995,6 +995,204 @@ function exportarCsv(){
 }
 
 /* =====================================================================
+   9B. HISTORICO DE ETAPAS (tabela de transicoes com tempo e motivo)
+   ===================================================================== */
+var HIST_STAGE_NAMES = {
+  "NEW":"Novo", "PREPARATION":"Qualificacao", "PREPAYMENT_INVOICE":"Neg. WhatsApp",
+  "EXECUTING":"Videochamada Agendada", "UC_JABGE5":"Deu Bolo",
+  "UC_8Y2T7I":"Valorizado", "UC_N8IW9L":"Proposta Feita",
+  "WON":"Vendido", "LOSE":"Perdido",
+  "1":"Novo", "2":"Qualificacao", "C0:NEW":"Novo"
+};
+var UF_MOTIVO_POR_ETAPA = {
+  "EXECUTING":   "UF_CRM_1785347873920",
+  "UC_JABGE5":   "UF_CRM_1785347983671",
+  "UC_8Y2T7I":   "UF_CRM_1785348083689",
+  "UC_N8IW9L":   "UF_CRM_1785348170506",
+  "WON":         "UF_CRM_1785348311534"
+};
+var ALL_UF_MOTIVOS = Object.keys(UF_MOTIVO_POR_ETAPA).map(function(k){ return UF_MOTIVO_POR_ETAPA[k]; });
+
+function nomeEtapa(stageId){
+  return HIST_STAGE_NAMES[stageId] || stageId;
+}
+
+function formatarDtHr(isoStr){
+  if (!isoStr) return "-";
+  var s = String(isoStr);
+  var d = s.substring(0,10).split("-").reverse().join("/");
+  var h = s.substring(11,16);
+  return d + " " + h;
+}
+
+function calcTempoPermanencia(entrada, saida){
+  if (!entrada) return "-";
+  var a = new Date(entrada), b = saida ? new Date(saida) : new Date();
+  var diff = Math.max(0, b - a);
+  var mins = Math.floor(diff / 60000);
+  if (mins === 0) return "0min";
+  var horas = Math.floor(mins / 60);
+  var dias = Math.floor(horas / 24);
+  if (dias > 0) return dias + "d " + (horas % 24) + "h";
+  if (horas > 0) return horas + "h " + (mins % 60) + "min";
+  return mins + "min";
+}
+
+function carregarHistoricoEtapas(){
+  var de = $("peDe").value, ate = $("peAte").value;
+  if (!de || !ate) { setStatus("Informe as datas."); return; }
+
+  var filtroEtapa = $("peHistEtapa") ? $("peHistEtapa").value : "";
+  var filtroVend = $("peHistBusca") ? $("peHistBusca").value.trim().toLowerCase() : "";
+
+  setStatus("Buscando historico de etapas...");
+  var btnHist = $("peHistGo"); if (btnHist) btnHist.disabled = true;
+
+  var d0 = de + " 00:00:00", d1 = ate + " 23:59:59";
+
+  /* 1. Busca historico de etapas do periodo */
+  var histFilter = { CATEGORY_ID: CFG.CATEGORY, ">=CREATED_TIME": d0, "<=CREATED_TIME": d1 };
+  if (filtroEtapa) histFilter["@STAGE_ID"] = [filtroEtapa];
+
+  listAll("crm.stagehistory.list", {
+    entityTypeId: 2,
+    filter: histFilter,
+    order: { CREATED_TIME: "ASC" }
+  }, function(r){ return (r && r.items) || []; }).then(function(histItems){
+    if (!histItems.length) {
+      renderHistoricoTabela([]);
+      setStatus("Historico carregado: 0 transicoes.");
+      if (btnHist) btnHist.disabled = false;
+      return;
+    }
+
+    /* Agrupa por OWNER_ID para calcular entrada/saida */
+    var porDeal = {};
+    histItems.forEach(function(h){
+      var did = String(h.OWNER_ID);
+      if (!porDeal[did]) porDeal[did] = [];
+      porDeal[did].push(h);
+    });
+
+    /* Ordena cada deal por tempo */
+    Object.keys(porDeal).forEach(function(did){
+      porDeal[did].sort(function(a,b){ return (a.CREATED_TIME||"").localeCompare(b.CREATED_TIME||""); });
+    });
+
+    /* Monta linhas: cada transicao = entrada na etapa; saida = proxima transicao do deal */
+    var transicoes = [];
+    Object.keys(porDeal).forEach(function(did){
+      var arr = porDeal[did];
+      for (var i = 0; i < arr.length; i++) {
+        var h = arr[i];
+        var saida = (i + 1 < arr.length) ? arr[i+1].CREATED_TIME : null;
+        transicoes.push({
+          dealId: did,
+          stageId: h.STAGE_ID,
+          entrada: h.CREATED_TIME,
+          saida: saida,
+          ownerId: String(h.OWNER_ID)
+        });
+      }
+    });
+
+    /* 2. Busca dados dos deals (titulo, responsavel, motivos) */
+    var dealIds = Object.keys(porDeal);
+    var selectFields = ["ID","TITLE","ASSIGNED_BY_ID"].concat(ALL_UF_MOTIVOS);
+
+    setStatus("Buscando dados de " + dealIds.length + " negocios...");
+
+    /* Busca em batches de 50 IDs */
+    var promises = [];
+    for (var i = 0; i < dealIds.length; i += 50) {
+      var chunk = dealIds.slice(i, i + 50);
+      promises.push(listAll("crm.deal.list", {
+        filter: { "@ID": chunk },
+        select: selectFields
+      }));
+    }
+
+    return Promise.all(promises).then(function(results){
+      var dealMap = {};
+      results.forEach(function(arr){
+        arr.forEach(function(d){ dealMap[String(d.ID)] = d; });
+      });
+
+      /* 3. Enriquece transicoes com nome do deal, responsavel, equipe, motivo */
+      var linhasHist = [];
+      transicoes.forEach(function(t){
+        var deal = dealMap[t.dealId];
+        if (!deal) return;
+        var uid = String(deal.ASSIGNED_BY_ID);
+        var u = DIM.users[uid] || { nome: "ID " + uid };
+        var equipe = DIM.agenteEquipe[uid] || "(sem equipe)";
+
+        /* Filtro de vendedor */
+        if (filtroVend && u.nome.toLowerCase().indexOf(filtroVend) === -1) return;
+
+        /* Motivo: pega o UF correspondente a etapa */
+        var ufMotivo = UF_MOTIVO_POR_ETAPA[t.stageId];
+        var motivo = ufMotivo ? (deal[ufMotivo] || "") : "";
+
+        linhasHist.push({
+          dealId: t.dealId,
+          titulo: deal.TITLE || ("Negocio #" + t.dealId),
+          responsavel: u.nome,
+          equipe: equipe,
+          etapaId: t.stageId,
+          etapaNome: nomeEtapa(t.stageId),
+          entrada: t.entrada,
+          saida: t.saida,
+          tempo: calcTempoPermanencia(t.entrada, t.saida),
+          motivo: motivo
+        });
+      });
+
+      /* Ordena por data entrada desc */
+      linhasHist.sort(function(a,b){ return (b.entrada||"").localeCompare(a.entrada||""); });
+
+      renderHistoricoTabela(linhasHist);
+      setStatus("Historico: " + linhasHist.length + " transicoes de " + dealIds.length + " negocios.");
+      if (btnHist) btnHist.disabled = false;
+    });
+  }).catch(function(e){
+    setStatus("Erro historico: " + e.message);
+    console.error(e);
+    if (btnHist) btnHist.disabled = false;
+  });
+}
+
+function renderHistoricoTabela(linhas){
+  var tbl = $("peTblHist"); if (!tbl) return;
+  var head = '<tr><th class="txt">Responsavel</th><th class="txt">Equipe</th><th class="txt">Negocio</th><th class="txt">Etapa</th><th>Entrada</th><th>Saida</th><th>Tempo</th><th class="txt">Motivo</th></tr>';
+  tbl.tHead.innerHTML = head;
+
+  if (!linhas.length) {
+    tbl.tBodies[0].innerHTML = '<tr><td class="txt" colspan="8"><div class="empty">Sem transicoes no periodo. Clique "Carregar Historico".</div></td></tr>';
+    tbl.tFoot.innerHTML = "";
+    return;
+  }
+
+  /* Limita a 500 para performance no browser */
+  var limitado = linhas.slice(0, 500);
+
+  tbl.tBodies[0].innerHTML = limitado.map(function(r){
+    return '<tr>' +
+      '<td class="txt">' + esc(r.responsavel) + '</td>' +
+      '<td class="txt"><span class="pill">' + esc(r.equipe) + '</span></td>' +
+      '<td class="txt">' + esc(r.titulo) + '</td>' +
+      '<td class="txt">' + esc(r.etapaNome) + '</td>' +
+      '<td>' + formatarDtHr(r.entrada) + '</td>' +
+      '<td>' + formatarDtHr(r.saida) + '</td>' +
+      '<td>' + esc(r.tempo) + '</td>' +
+      '<td class="txt">' + esc(r.motivo) + '</td>' +
+      '</tr>';
+  }).join("");
+
+  tbl.tFoot.innerHTML = '<tr><td class="txt" colspan="8">Mostrando ' + limitado.length + ' de ' + linhas.length + ' transicoes</td></tr>';
+}
+
+/* =====================================================================
    10. BOOT
    ===================================================================== */
 /* limpa caches antigos */
@@ -1027,6 +1225,9 @@ var drillModal = $("peDrillModal");
 if (drillModal) drillModal.addEventListener("click", function(e){
   if (e.target === drillModal || e.target.classList.contains("modal-close")) drillModal.style.display = "none";
 });
+
+/* Historico de etapas */
+var histGoEl = $("peHistGo"); if (histGoEl) histGoEl.addEventListener("click", carregarHistoricoEtapas);
 
 setPeriodo("mes");
 carregarDimensoes().then(atualizar).catch(function(e){ setStatus("ERRO: " + e.message); console.error(e); });
