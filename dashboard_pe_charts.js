@@ -1175,13 +1175,18 @@ function carregarHistoricoEtapas(){
         var cChunk = contactIds.slice(ci, ci + 50);
         cPromises.push(listAll("crm.contact.list", {
           filter: { "@ID": cChunk },
-          select: ["ID","NAME","LAST_NAME"]
+          select: ["ID","NAME","LAST_NAME","PHONE"]
         }));
       }
       return Promise.all(cPromises).then(function(cResults){
         cResults.forEach(function(arr){
           arr.forEach(function(c){
-            contactMap[String(c.ID)] = ((c.NAME || "") + " " + (c.LAST_NAME || "")).trim() || ("Contato #" + c.ID);
+            var nome = ((c.NAME || "") + " " + (c.LAST_NAME || "")).trim() || ("Contato #" + c.ID);
+            var telefone = "";
+            if (c.PHONE && c.PHONE.length > 0) {
+              telefone = c.PHONE[0].VALUE || "";
+            }
+            contactMap[String(c.ID)] = { nome: nome, telefone: telefone };
           });
         });
         return { dealMap: dealMap, contactMap: contactMap };
@@ -1203,13 +1208,15 @@ function carregarHistoricoEtapas(){
 
         /* Titulo: usa TITLE, se vazio/igual usa nome do contato */
         var titulo = deal.TITLE || "";
+        var cliente = "";
+        var telefone = "";
+        var cid = deal.CONTACT_ID;
+        if (cid && contactMap[String(cid)]) {
+          cliente = contactMap[String(cid)].nome;
+          telefone = contactMap[String(cid)].telefone;
+        }
         if (!titulo || titulo === "=" || titulo === "-") {
-          var cid = deal.CONTACT_ID;
-          if (cid && contactMap[String(cid)]) {
-            titulo = contactMap[String(cid)];
-          } else {
-            titulo = "Negocio #" + t.dealId;
-          }
+          titulo = cliente || ("Negocio #" + t.dealId);
         }
 
         /* Motivo: pega o UF correspondente a etapa */
@@ -1219,6 +1226,8 @@ function carregarHistoricoEtapas(){
         linhasHist.push({
           dealId: t.dealId,
           titulo: titulo,
+          cliente: cliente,
+          telefone: telefone,
           responsavel: u.nome,
           equipe: equipe,
           etapaId: t.stageId,
@@ -1248,11 +1257,11 @@ function carregarHistoricoEtapas(){
 
 function renderHistoricoTabela(linhas){
   var tbl = $("peTblHist"); if (!tbl) return;
-  var head = '<tr><th class="txt">Responsavel</th><th class="txt">Equipe</th><th class="txt">Negocio</th><th class="txt">Etapa</th><th>Entrada</th><th>Saida</th><th>Tempo</th><th class="txt">Motivo</th></tr>';
+  var head = '<tr><th class="txt">Responsavel</th><th class="txt">Equipe</th><th class="txt">Negocio</th><th class="txt">Cliente</th><th>Telefone</th><th class="txt">Etapa</th><th>Entrada</th><th>Saida</th><th>Tempo</th><th class="txt">Motivo</th></tr>';
   tbl.tHead.innerHTML = head;
 
   if (!linhas.length) {
-    tbl.tBodies[0].innerHTML = '<tr><td class="txt" colspan="8"><div class="empty">Sem transicoes no periodo. Clique "Carregar Historico".</div></td></tr>';
+    tbl.tBodies[0].innerHTML = '<tr><td class="txt" colspan="10"><div class="empty">Sem transicoes no periodo. Clique "Carregar Historico".</div></td></tr>';
     tbl.tFoot.innerHTML = "";
     return;
   }
@@ -1265,6 +1274,8 @@ function renderHistoricoTabela(linhas){
       '<td class="txt">' + esc(r.responsavel) + '</td>' +
       '<td class="txt"><span class="pill">' + esc(r.equipe) + '</span></td>' +
       '<td class="txt">' + esc(r.titulo) + '</td>' +
+      '<td class="txt">' + esc(r.cliente) + '</td>' +
+      '<td>' + esc(r.telefone) + '</td>' +
       '<td class="txt">' + esc(r.etapaNome) + '</td>' +
       '<td>' + formatarDtHr(r.entrada) + '</td>' +
       '<td>' + formatarDtHr(r.saida) + '</td>' +
@@ -1273,7 +1284,7 @@ function renderHistoricoTabela(linhas){
       '</tr>';
   }).join("");
 
-  tbl.tFoot.innerHTML = '<tr><td class="txt" colspan="8">Mostrando ' + limitado.length + ' de ' + linhas.length + ' transicoes</td></tr>';
+  tbl.tFoot.innerHTML = '<tr><td class="txt" colspan="10">Mostrando ' + limitado.length + ' de ' + linhas.length + ' transicoes</td></tr>';
 }
 
 /* =====================================================================
