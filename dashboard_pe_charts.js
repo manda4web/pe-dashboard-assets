@@ -1025,6 +1025,23 @@ var UF_MOTIVO_POR_ETAPA = {
 };
 var ALL_UF_MOTIVOS = Object.keys(UF_MOTIVO_POR_ETAPA).map(function(k){ return UF_MOTIVO_POR_ETAPA[k]; });
 
+/* Cache de nomes de etapas (carregado da API) */
+var _stageNamesLoaded = false;
+
+function carregarNomesEtapas(){
+  if (_stageNamesLoaded) return Promise.resolve();
+  return call("crm.dealcategory.stage.list", { id: CFG.CATEGORY }).then(function(j){
+    var stages = j.result || [];
+    stages.forEach(function(s){
+      if (s.STATUS_ID && s.NAME) HIST_STAGE_NAMES[s.STATUS_ID] = s.NAME;
+    });
+    _stageNamesLoaded = true;
+  }).catch(function(e){
+    console.warn("[PE] Erro ao buscar etapas:", e.message);
+    _stageNamesLoaded = true; /* nao tenta de novo */
+  });
+}
+
 function nomeEtapa(stageId){
   return HIST_STAGE_NAMES[stageId] || stageId;
 }
@@ -1062,11 +1079,14 @@ function carregarHistoricoEtapas(){
 
   var d0 = de + " 00:00:00", d1 = ate + " 23:59:59";
 
+  /* 0. Carrega nomes de etapas da API (1x) */
+  carregarNomesEtapas().then(function(){
+
   /* 1. Busca historico de etapas do periodo */
   var histFilter = { CATEGORY_ID: CFG.CATEGORY, ">=CREATED_TIME": d0, "<=CREATED_TIME": d1 };
   if (filtroEtapa) histFilter["@STAGE_ID"] = [filtroEtapa];
 
-  listAll("crm.stagehistory.list", {
+  return listAll("crm.stagehistory.list", {
     entityTypeId: 2,
     filter: histFilter,
     order: { CREATED_TIME: "ASC" }
@@ -1108,9 +1128,9 @@ function carregarHistoricoEtapas(){
       }
     });
 
-    /* 2. Busca dados dos deals (titulo, responsavel, motivos) */
+    /* 2. Busca dados dos deals (titulo, responsavel, contato, motivos) */
     var dealIds = Object.keys(porDeal);
-    var selectFields = ["ID","TITLE","ASSIGNED_BY_ID"].concat(ALL_UF_MOTIVOS);
+    var selectFields = ["ID","TITLE","ASSIGNED_BY_ID","CONTACT_ID"].concat(ALL_UF_MOTIVOS);
 
     setStatus("Buscando dados de " + dealIds.length + " negocios...");
 
@@ -1126,11 +1146,42 @@ function carregarHistoricoEtapas(){
 
     return Promise.all(promises).then(function(results){
       var dealMap = {};
+      var contactIds = [];
       results.forEach(function(arr){
-        arr.forEach(function(d){ dealMap[String(d.ID)] = d; });
+        arr.forEach(function(d){
+          dealMap[String(d.ID)] = d;
+          var cid = d.CONTACT_ID;
+          if (cid && String(cid) !== "0" && contactIds.indexOf(String(cid)) === -1) {
+            contactIds.push(String(cid));
+          }
+        });
       });
 
-      /* 3. Enriquece transicoes com nome do deal, responsavel, equipe, motivo */
+      /* 2b. Busca nomes dos contatos */
+      var contactMap = {};
+      if (!contactIds.length) return { dealMap: dealMap, contactMap: contactMap };
+
+      setStatus("Buscando " + contactIds.length + " contatos...");
+      var cPromises = [];
+      for (var ci = 0; ci < contactIds.length; ci += 50) {
+        var cChunk = contactIds.slice(ci, ci + 50);
+        cPromises.push(listAll("crm.contact.list", {
+          filter: { "@ID": cChunk },
+          select: ["ID","NAME","LAST_NAME"]
+        }));
+      }
+      return Promise.all(cPromises).then(function(cResults){
+        cResults.forEach(function(arr){
+          arr.forEach(function(c){
+            contactMap[String(c.ID)] = ((c.NAME || "") + " " + (c.LAST_NAME || "")).trim() || ("Contato #" + c.ID);
+          });
+        });
+        return { dealMap: dealMap, contactMap: contactMap };
+      });
+    }).then(function(maps){
+      var dealMap = maps.dealMap, contactMap = maps.contactMap;
+
+      /* 3. Enriquece transicoes com nome do deal/cliente, responsavel, equipe, motivo */
       var linhasHist = [];
       transicoes.forEach(function(t){
         var deal = dealMap[t.dealId];
@@ -1142,13 +1193,24 @@ function carregarHistoricoEtapas(){
         /* Filtro de vendedor */
         if (filtroVend && u.nome.toLowerCase().indexOf(filtroVend) === -1) return;
 
+        /* Titulo: usa TITLE, se vazio/igual usa nome do contato */
+        var titulo = deal.TITLE || "";
+        if (!titulo || titulo === "=" || titulo === "-") {
+          var cid = deal.CONTACT_ID;
+          if (cid && contactMap[String(cid)]) {
+            titulo = contactMap[String(cid)];
+          } else {
+            titulo = "Negocio #" + t.dealId;
+          }
+        }
+
         /* Motivo: pega o UF correspondente a etapa */
         var ufMotivo = UF_MOTIVO_POR_ETAPA[t.stageId];
         var motivo = ufMotivo ? (deal[ufMotivo] || "") : "";
 
         linhasHist.push({
           dealId: t.dealId,
-          titulo: deal.TITLE || ("Negocio #" + t.dealId),
+          titulo: titulo,
           responsavel: u.nome,
           equipe: equipe,
           etapaId: t.stageId,
@@ -1164,9 +1226,11 @@ function carregarHistoricoEtapas(){
       linhasHist.sort(function(a,b){ return (b.entrada||"").localeCompare(a.entrada||""); });
 
       renderHistoricoTabela(linhasHist);
-      setStatus("Historico: " + linhasHist.length + " transicoes de " + dealIds.length + " negocios.");
+      setStatus("Historico: " + linhasHist.length + " transicoes de " + Object.keys(dealMap).length + " negocios.");
       if (btnHist) btnHist.disabled = false;
     });
+  });
+
   }).catch(function(e){
     setStatus("Erro historico: " + e.message);
     console.error(e);
