@@ -325,7 +325,7 @@ function carregarFatos(de, ate){
   } else {
     d1 = ate + " 23:59:59";
   }
-  var selLead = ["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE","STAGE_ID","OPPORTUNITY",
+  var selLead = ["ID","ASSIGNED_BY_ID","SOURCE_ID","DATE_CREATE","STAGE_ID","OPPORTUNITY","TITLE","CONTACT_ID","STAGE_SEMANTIC_ID",
                  CFG.UF.TIPO_VENDA, CFG.UF.IND, CFG.UF.ENTREV, CFG.UF.LIG, CFG.UF.MSG];
 
   setStatus("Buscando negocios do periodo...");
@@ -520,7 +520,7 @@ function calcular(dados, de, ate){
     porDia[dia].entrevistas++;
   });
 
-  return { linhas: linhas, de: de, ate: ate, dias: dias, porDia: porDia };
+  return { linhas: linhas, de: de, ate: ate, dias: dias, porDia: porDia, leads: dados.leads };
 }
 
 function agregar(linhas){
@@ -712,6 +712,55 @@ function renderChartRanking(linhas){
 /* Grafico 6: Radar — omitido (requer Chart.js), silencioso */
 function renderChartRadar(linhas){ return; }
 
+/* Tabela de negocios do periodo */
+function renderTabelaNegocios(leads){
+  var tbl = $("peTblNegocios"); if (!tbl) return;
+  var eq = $("peEquipe") ? $("peEquipe").value : "";
+  var q = $("peBusca") ? ($("peBusca").value || "").trim().toLowerCase() : "";
+
+  /* filtra por equipe e vendedor selecionados */
+  var dados = leads.filter(function(d){
+    var uid = String(d.ASSIGNED_BY_ID);
+    if (eq) {
+      var eqVend = DIM.agenteEquipe[uid] || "(sem equipe)";
+      if (eqVend !== eq) return false;
+    }
+    if (q) {
+      var u = DIM.users[uid];
+      if (u && u.nome.toLowerCase().indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+
+  /* ordena por data desc (mais recentes primeiro) */
+  dados.sort(function(a,b){ return (b.DATE_CREATE||"").localeCompare(a.DATE_CREATE||""); });
+
+  /* limita a 200 para performance */
+  var limitado = dados.slice(0, 200);
+
+  var head = '<tr><th class="txt">Cliente</th><th class="txt">Responsavel</th><th class="txt">Equipe</th><th>Data criacao</th><th>Etapa</th><th>Valor</th></tr>';
+  tbl.tHead.innerHTML = head;
+
+  if (!limitado.length) {
+    tbl.tBodies[0].innerHTML = '<tr><td class="txt" colspan="6"><div class="empty">Sem negocios no periodo.</div></td></tr>';
+    tbl.tFoot.innerHTML = "";
+    return;
+  }
+
+  tbl.tBodies[0].innerHTML = limitado.map(function(d){
+    var uid = String(d.ASSIGNED_BY_ID);
+    var u = DIM.users[uid] || { nome: "ID " + uid };
+    var eqNome = DIM.agenteEquipe[uid] || "(sem equipe)";
+    var dc = (d.DATE_CREATE || "").substring(0, 10).split("-").reverse().join("/");
+    var titulo = d.TITLE || ("Negocio #" + d.ID);
+    var etapa = d.STAGE_ID === "WON" ? "Vendido" : (d.STAGE_SEMANTIC_ID === "F" ? "Perdido" : d.STAGE_ID);
+    var valor = parseFloat(d.OPPORTUNITY) || 0;
+    return '<tr><td class="txt">' + esc(titulo) + '</td><td class="txt">' + esc(u.nome) + '</td><td class="txt"><span class="pill">' + esc(eqNome) + '</span></td><td>' + dc + '</td><td>' + esc(etapa) + '</td><td>' + money(valor) + '</td></tr>';
+  }).join("");
+
+  tbl.tFoot.innerHTML = '<tr><td class="txt" colspan="6">Mostrando ' + limitado.length + ' de ' + dados.length + ' negocios</td></tr>';
+}
+
 /* Modal drill vendedor */
 function mostrarDrillVendedor(v){
   var el = $("peDrillModal"); if (!el) return;
@@ -871,6 +920,9 @@ function pintar(){
 
   var sup = linhas.filter(function(r){ return /supervisor/i.test(r.cargo || ""); });
   renderTabela("peTblSup", COLS_SUP, sup, "faturamento");
+
+  /* Tabela de negocios (leads do periodo) */
+  renderTabelaNegocios(LAST.leads);
 
   var temManual = LAST.linhas.some(function(r){ return r.mensagens > 0 || r.ligacoes > 0; });
   var avisoEl = $("peAviso");
