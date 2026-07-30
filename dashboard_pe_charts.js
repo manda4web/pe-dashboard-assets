@@ -1068,7 +1068,9 @@ function calcTempoPermanencia(entrada, saida){
 }
 
 function carregarHistoricoEtapas(){
-  var de = $("peDe").value, ate = $("peAte").value;
+  /* Usa datas proprias do historico; se vazias, copia do filtro principal */
+  var de = ($("peHistDe") && $("peHistDe").value) || $("peDe").value;
+  var ate = ($("peHistAte") && $("peHistAte").value) || $("peAte").value;
   if (!de || !ate) { setStatus("Informe as datas."); return; }
 
   var filtroEtapa = $("peHistEtapa") ? $("peHistEtapa").value : "";
@@ -1304,6 +1306,10 @@ if (drillModal) drillModal.addEventListener("click", function(e){
 
 /* Historico de etapas */
 var histGoEl = $("peHistGo"); if (histGoEl) histGoEl.addEventListener("click", carregarHistoricoEtapas);
+/* Preenche datas do historico com hoje */
+var histDeEl = $("peHistDe"), histAteEl = $("peHistAte");
+if (histDeEl && !histDeEl.value) histDeEl.value = iso(new Date());
+if (histAteEl && !histAteEl.value) histAteEl.value = iso(new Date());
 
 setPeriodo("mes");
 carregarDimensoes().then(atualizar).catch(function(e){ setStatus("ERRO: " + e.message); console.error(e); });
