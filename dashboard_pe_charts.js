@@ -1010,19 +1010,21 @@ function exportarCsv(){
    9B. HISTORICO DE ETAPAS (tabela de transicoes com tempo e motivo)
    ===================================================================== */
 var HIST_STAGE_NAMES = {
-  "NEW":"Novo", "PREPARATION":"Qualificacao", "PREPAYMENT_INVOICE":"Neg. WhatsApp",
+  "NEW":"Novo", "PREPARATION":"Qualificacao", "PREPAYMENT_INVOICE":"Negociacao WhatsApp",
   "EXECUTING":"Videochamada Agendada", "UC_JABGE5":"Deu Bolo",
   "UC_8Y2T7I":"Valorizado", "UC_N8IW9L":"Proposta Feita",
   "WON":"Vendido", "LOSE":"Perdido",
   "1":"Novo", "2":"Qualificacao", "C0:NEW":"Novo"
 };
 var UF_MOTIVO_POR_ETAPA = {
-  "EXECUTING":   "UF_CRM_1785347873920",
-  "UC_JABGE5":   "UF_CRM_1785347983671",
-  "UC_8Y2T7I":   "UF_CRM_1785348083689",
-  "UC_N8IW9L":   "UF_CRM_1785348170506",
-  "WON":         "UF_CRM_1785348311534"
+  "PREPAYMENT_INVOICE": "UF_CRM_1785347873920",
+  "EXECUTING":   "UF_CRM_1785347983671",
+  "UC_JABGE5":   "UF_CRM_1785348083689",
+  "UC_8Y2T7I":   "UF_CRM_1785348170506",
+  "UC_N8IW9L":   "UF_CRM_1785348311534"
 };
+/* Apenas essas 5 etapas sao mostradas no historico */
+var HIST_ETAPAS_FILTRO = ["PREPAYMENT_INVOICE","EXECUTING","UC_JABGE5","UC_8Y2T7I","UC_N8IW9L"];
 var ALL_UF_MOTIVOS = Object.keys(UF_MOTIVO_POR_ETAPA).map(function(k){ return UF_MOTIVO_POR_ETAPA[k]; });
 
 /* Cache de nomes de etapas (carregado da API) */
@@ -1086,7 +1088,11 @@ function carregarHistoricoEtapas(){
 
   /* 1. Busca historico de etapas do periodo */
   var histFilter = { CATEGORY_ID: CFG.CATEGORY, ">=CREATED_TIME": d0, "<=CREATED_TIME": d1 };
-  if (filtroEtapa) histFilter["@STAGE_ID"] = [filtroEtapa];
+  if (filtroEtapa) {
+    histFilter["@STAGE_ID"] = [filtroEtapa];
+  } else {
+    histFilter["@STAGE_ID"] = HIST_ETAPAS_FILTRO;
+  }
 
   return listAll("crm.stagehistory.list", {
     entityTypeId: 2,
