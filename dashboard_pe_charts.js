@@ -265,6 +265,18 @@ function popularFiltros(){
       var o = document.createElement("option"); o.value = u.nome; dl.appendChild(o);
     });
   }
+
+  /* Popula select de vendedores do historico de etapas */
+  var selHist = $("peHistBusca");
+  if (selHist && selHist.tagName === "SELECT") {
+    while (selHist.options.length > 1) selHist.remove(1);
+    var nomesHist = Object.keys(DIM.users).map(function(uid){ return DIM.users[uid]; })
+      .filter(function(u){ return u.ativo; })
+      .sort(function(a,b){ return a.nome.localeCompare(b.nome, "pt-BR"); });
+    nomesHist.forEach(function(u){
+      var o = document.createElement("option"); o.value = u.nome; o.textContent = u.nome; selHist.appendChild(o);
+    });
+  }
 }
 
 function carregarDimensoes(){
