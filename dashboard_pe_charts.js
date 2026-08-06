@@ -1010,36 +1010,104 @@ function exportarCsv(){
    9B. HISTORICO DE ETAPAS (tabela de transicoes com tempo e motivo)
    ===================================================================== */
 var HIST_STAGE_NAMES = {
-  "NEW":"Novo", "PREPARATION":"Qualificacao", "PREPAYMENT_INVOICE":"Negociacao WhatsApp",
+  "NEW":"Fila de distribuicao", "UC_DIBYSV":"LEADS DO BOLSAO",
+  "UC_OW7XVW":"Sem Contato", "UC_MTK1SA":"Contato Inicial",
+  "UC_AHEDFZ":"Negociacao Whatsapp",
   "EXECUTING":"Videochamada Agendada", "UC_JABGE5":"Deu Bolo",
   "UC_8Y2T7I":"Valorizado", "UC_N8IW9L":"Proposta Feita",
-  "WON":"Vendido", "LOSE":"Perdido",
-  "1":"Novo", "2":"Qualificacao", "C0:NEW":"Novo"
+  "WON":"Vendido", "LOSE":"Nao vai fechar",
+  "UC_GT6D54":"Negocios Futuros", "UC_0J5FAA":"Lead Congelado",
+  "UC_9K0JDF":"Move para o Bolsao",
+  "1":"Novo", "2":"Qualificacao", "C0:NEW":"Fila de distribuicao"
 };
+
+/* -------- Campos de justificativa/motivo --------
+   Preenchidos manualmente pelo vendedor ao mover o card.
+   Ordem = prioridade: usa o primeiro campo com valor.        */
+var UF_MOTIVO_GERAL = [
+  "UF_CRM_1785522172724",  /* Explicacao do por que esta nesta etapa */
+  "UF_CRM_1785522200262"   /* O que houve na etapa anterior?        */
+];
 var UF_MOTIVO_POR_ETAPA = {
-  "PREPAYMENT_INVOICE": "UF_CRM_1785347873920",
-  "EXECUTING":   "UF_CRM_1785347983671",
-  "UC_JABGE5":   "UF_CRM_1785348083689",
-  "UC_8Y2T7I":   "UF_CRM_1785348170506",
-  "UC_N8IW9L":   "UF_CRM_1785348311534"
+  "UC_AHEDFZ": [],
+  "EXECUTING": [],
+  "UC_JABGE5": [],
+  "UC_8Y2T7I": ["UF_CRM_1768532061"],                          /* Motivo da Valorizacao */
+  "UC_N8IW9L": [],
+  "WON":       [],
+  "LOSE":      ["UF_CRM_1785522129824","UF_CRM_1763145771"],   /* Por que moveu + Motivo (perda) */
+  "UC_GT6D54": ["UF_CRM_1785522129824"],
+  "UC_0J5FAA": ["UF_CRM_1785522129824"]
 };
-/* Apenas essas 5 etapas sao mostradas no historico */
-var HIST_ETAPAS_FILTRO = ["PREPAYMENT_INVOICE","EXECUTING","UC_JABGE5","UC_8Y2T7I","UC_N8IW9L"];
-var ALL_UF_MOTIVOS = Object.keys(UF_MOTIVO_POR_ETAPA).map(function(k){ return UF_MOTIVO_POR_ETAPA[k]; });
+/* Etapas mostradas no historico (as que tem justificativa do vendedor) */
+var HIST_ETAPAS_FILTRO = ["UC_AHEDFZ","EXECUTING","UC_JABGE5","UC_8Y2T7I","UC_N8IW9L","WON","LOSE","UC_GT6D54","UC_0J5FAA"];
+
+function camposMotivo(stageId){
+  return (UF_MOTIVO_POR_ETAPA[stageId] || []).concat(UF_MOTIVO_GERAL);
+}
+var ALL_UF_MOTIVOS = (function(){
+  var seen = {}, out = [];
+  Object.keys(UF_MOTIVO_POR_ETAPA).forEach(function(k){
+    UF_MOTIVO_POR_ETAPA[k].forEach(function(f){ if (!seen[f]) { seen[f] = 1; out.push(f); } });
+  });
+  UF_MOTIVO_GERAL.forEach(function(f){ if (!seen[f]) { seen[f] = 1; out.push(f); } });
+  return out;
+})();
+
+/* Mapa id->label das listas (enumeration) usadas como motivo */
+var MOTIVO_ENUM = {};
+
+/* Resolve o valor de um campo de motivo (trata lista e multiplo) */
+function valorMotivo(deal, uf){
+  var v = deal[uf];
+  if (v === null || v === undefined || v === "") return "";
+  var arr = Object.prototype.toString.call(v) === "[object Array]" ? v : [v];
+  var map = MOTIVO_ENUM[uf];
+  var out = [];
+  arr.forEach(function(x){
+    var s = String(x).trim();
+    if (!s || s === "." || s === "-") return;
+    out.push((map && map[s]) ? map[s] : s);
+  });
+  return out.join(" / ");
+}
+function motivoDaEtapa(deal, stageId){
+  var campos = camposMotivo(stageId);
+  for (var i = 0; i < campos.length; i++) {
+    var v = valorMotivo(deal, campos[i]);
+    if (v) return v;
+  }
+  return "";
+}
 
 /* Cache de nomes de etapas (carregado da API) */
 var _stageNamesLoaded = false;
 
 function carregarNomesEtapas(){
   if (_stageNamesLoaded) return Promise.resolve();
-  return call("crm.dealcategory.stage.list", { id: CFG.CATEGORY }).then(function(j){
-    var stages = j.result || [];
-    stages.forEach(function(s){
-      if (s.STATUS_ID && s.NAME) HIST_STAGE_NAMES[s.STATUS_ID] = s.NAME;
-    });
+  return Promise.all([
+    call("crm.dealcategory.stage.list", { id: CFG.CATEGORY }).then(function(j){
+      var stages = j.result || [];
+      stages.forEach(function(s){
+        if (s.STATUS_ID && s.NAME) HIST_STAGE_NAMES[s.STATUS_ID] = s.NAME;
+      });
+    }),
+    /* labels das listas de motivo (Motivo da perda, Motivo da Valorizacao, ...) */
+    call("crm.deal.fields", {}).then(function(j){
+      var f = j.result || {};
+      ALL_UF_MOTIVOS.forEach(function(uf){
+        var def = f[uf];
+        if (def && def.items && def.items.length) {
+          var m = {};
+          def.items.forEach(function(it){ m[String(it.ID)] = it.VALUE; });
+          MOTIVO_ENUM[uf] = m;
+        }
+      });
+    })
+  ]).then(function(){
     _stageNamesLoaded = true;
   }).catch(function(e){
-    console.warn("[PE] Erro ao buscar etapas:", e.message);
+    console.warn("[PE] Erro ao buscar etapas/campos:", e.message);
     _stageNamesLoaded = true; /* nao tenta de novo */
   });
 }
@@ -1219,9 +1287,8 @@ function carregarHistoricoEtapas(){
           titulo = cliente || ("Negocio #" + t.dealId);
         }
 
-        /* Motivo: pega o UF correspondente a etapa */
-        var ufMotivo = UF_MOTIVO_POR_ETAPA[t.stageId];
-        var motivo = ufMotivo ? (deal[ufMotivo] || "") : "";
+        /* Motivo: campo especifico da etapa, com fallback nos campos gerais */
+        var motivo = motivoDaEtapa(deal, t.stageId);
 
         linhasHist.push({
           dealId: t.dealId,
