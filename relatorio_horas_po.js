@@ -1,0 +1,534 @@
+(function(){
+"use strict";
+if (window.__rhStarted) return;   /* evita rodar duas vezes */
+window.__rhStarted = true;
+
+/* ===================== CONFIG ===================== */
+var CFG = {
+  WEBHOOK : "https://tekee.bitrix24.com.br/rest/141/q1fe2g8o7q7h8v9b/",
+  TS_ENTITY  : 1050,   /* SPA Timesheet */
+  TS_CATEGORY: 31,
+  PO_ENTITY  : 1066,   /* SPA PO */
+  MAX_CONCURRENT: 4,
+  BATCH_SIZE: 50,
+  PAGE_SIZE: 50,
+  /* campos do Timesheet */
+  TS: {
+    PO   : "ufCrm15_1777513013",   /* -> ID item PO */
+    DATA : "ufCrm15_1753036495093",
+    H_TRAB: "ufCrm15_1753036521924",
+    H_EXTRA:"ufCrm15_1753036552484",
+    H_DESL: "ufCrm15_1777405323760",
+    NATUREZA: "ufCrm15_1760211951562",
+    LOCAL   : "ufCrm15_1760967418066",
+    UNIDADE : "ufCrm15_1773101916"
+  },
+  /* campos da PO */
+  PO: {
+    HORAS_PLAN: "ufCrm23_1787740461744",
+    DEAL_ID   : "ufCrm23_1788344159444"
+  },
+  /* campo horas na Deal (fallback) */
+  DEAL_HORAS: "UF_CRM_1787738361509",
+  UNIDADE_ENTITY: 1062,   /* SPA Unidades (o campo Unidade é referência crm) */
+  NATUREZA_MAP: {
+    "469":"Auditoria","471":"Consultoria","473":"Inspeção","475":"Teste",
+    "477":"Treinamento","505":"Interno"
+  },
+  LOCAL_MAP: {
+    "479":"Onshore Cliente","481":"Offshore","503":"Onshore Home-Office","525":"Deslocamento"
+  }
+};
+
+/* ===================== CAMADA REST ===================== */
+function toQuery(obj, prefix){
+  var parts=[];
+  Object.keys(obj).forEach(function(k){
+    var v=obj[k], key=prefix?prefix+"["+k+"]":k;
+    if(v===null||v===undefined)return;
+    if(Array.isArray(v)){
+      v.forEach(function(item,i){
+        var ik=key+"["+i+"]";
+        if(item!==null&&typeof item==="object")parts.push(toQuery(item,ik));
+        else parts.push(encodeURIComponent(ik)+"="+encodeURIComponent(item));
+      });
+    }else if(typeof v==="object"){parts.push(toQuery(v,key));}
+    else{parts.push(encodeURIComponent(key)+"="+encodeURIComponent(v));}
+  });
+  return parts.filter(Boolean).join("&");
+}
+var _sem={running:0,queue:[]};
+function acq(){return new Promise(function(res){if(CFG.MAX_CONCURRENT>_sem.running){_sem.running++;res();}else _sem.queue.push(res);});}
+function rel(){_sem.running--;if(_sem.queue.length){_sem.running++;_sem.queue.shift()();}}
+/* IMPORTANTE: usa Content-Type JSON. O filtro de range por data (>=/<=)
+   só é respeitado pelo crm.item.list quando o corpo é JSON, não form-urlencoded. */
+function call(method,params){
+  return acq().then(function(){
+    var url=CFG.WEBHOOK+method+".json", body=JSON.stringify(params||{});
+    return fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:body})
+    .then(function(r){
+      if(r.status===503)return new Promise(function(x){setTimeout(x,1000);}).then(function(){rel();return call(method,params);});
+      if(!r.ok)throw new Error(method+" HTTP "+r.status);
+      return r.json();
+    }).then(function(j){rel();if(j.error)throw new Error(method+": "+(j.error_description||j.error));return j;})
+    .catch(function(e){rel();throw e;});
+  });
+}
+function batch(cmds){
+  var cmd={};
+  cmds.forEach(function(c,i){cmd["c"+i]=c.method+"?"+toQuery(c.params);});
+  return call("batch",{halt:0,cmd:cmd}).then(function(j){
+    var res=(j.result&&j.result.result)||{}, errs=(j.result&&j.result.result_error)||{};
+    return cmds.map(function(c,i){
+      if(errs["c"+i])throw new Error(c.method+": "+JSON.stringify(errs["c"+i]));
+      return res["c"+i];
+    });
+  });
+}
+/* Paginação via call() JSON puro — necessária quando há filtro de range por data,
+   que o batch (querystring) ignora. Usa "start" numérico; segue enquanto vier página cheia. */
+function listAllJson(method,params,extract){
+  extract=extract||function(r){return r||[];};
+  var all=[];
+  function page(start){
+    var p=Object.assign({},params,{start:start});
+    return call(method,p).then(function(r){
+      var chunk=extract(r.result);
+      all=all.concat(chunk);
+      var total=typeof r.total==="number"?r.total:0;
+      var next=(typeof r.next==="number")?r.next:(chunk.length===50?start+50:0);
+      if(next && all.length<total && chunk.length) return page(next);
+      return all;
+    });
+  }
+  return page(0);
+}
+/* Paginação rápida via batch — só para métodos SEM filtro de data (user.get). */
+function listAll(method,params,extract,pageSize){
+  pageSize=pageSize||CFG.PAGE_SIZE;
+  extract=extract||function(r){return r||[];};
+  var p=Object.assign({},params,{start:0});
+  return call(method,p).then(function(first){
+    var items=extract(first.result).slice();
+    var total=typeof first.total==="number"?first.total:items.length;
+    if(total<=pageSize)return items;
+    var offsets=[];for(var s=pageSize;s<total;s+=pageSize)offsets.push(s);
+    var batches=[];for(var i=0;i<offsets.length;i+=CFG.BATCH_SIZE)batches.push(offsets.slice(i,i+CFG.BATCH_SIZE));
+    return Promise.all(batches.map(function(chunk){
+      return batch(chunk.map(function(off){return{method:method,params:Object.assign({},params,{start:off})};}))
+      .then(function(rs){var partial=[];rs.forEach(function(r){if(r)partial=partial.concat(extract(r));});return partial;});
+    })).then(function(results){results.forEach(function(pt){items=items.concat(pt);});return items;});
+  });
+}
+
+/* ===================== HELPERS ===================== */
+var $=function(id){return document.getElementById(id);};
+var nfDec=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+function h(v){return nfDec.format(Number(v)||0)+"h";}
+function num(v){return Number(String(v==null?"":v).replace(",","."))||0;}
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function fmtData(s){if(!s)return"";var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();}
+function setStatus(m){var e=$("rhStatus");if(e)e.textContent=m;}
+
+/* ===================== ESTADO ===================== */
+var DIM={users:{},companies:{},unidades:{}};
+var DATA={rows:[]};      /* linhas de timesheet enriquecidas */
+var POINFO={};           /* poId -> {title, planejado, dealId, resp} */
+
+/* ===================== DIMENSÕES (usuários) ===================== */
+function carregarUsuarios(){
+  return listAll("user.get",{},function(r){return r||[];}).then(function(users){
+    users.forEach(function(u){
+      DIM.users[String(u.ID)]={
+        nome:((u.NAME||"")+" "+(u.LAST_NAME||"")).trim()||("Usuário #"+u.ID),
+        ativo:u.ACTIVE!==false&&u.ACTIVE!=="N"
+      };
+    });
+  });
+}
+
+/* ===================== CARGA PRINCIPAL ===================== */
+function carregar(de, ate){
+  setStatus("Carregando timesheets...");
+  /* data do trabalho no intervalo (campo ufCrm15_1753036495093) */
+  var filtro={};
+  filtro[">="+CFG.TS.DATA]=de+"T00:00:00";
+  filtro["<="+CFG.TS.DATA]=ate+"T23:59:59";
+  filtro["categoryId"]=CFG.TS_CATEGORY;
+
+  var tsParams={
+    entityTypeId:CFG.TS_ENTITY,
+    filter:filtro,
+    order:{},
+    select:["id","title","assignedById","companyId","sourceDescription","stageId",
+            CFG.TS.PO,CFG.TS.DATA,CFG.TS.H_TRAB,CFG.TS.H_EXTRA,CFG.TS.H_DESL,
+            CFG.TS.NATUREZA,CFG.TS.LOCAL,CFG.TS.UNIDADE]
+  };
+  tsParams.order[CFG.TS.DATA]="ASC";
+
+  return listAllJson("crm.item.list",tsParams,function(r){return(r&&r.items)||[];}).then(function(items){
+    DATA.rows = items.map(function(it){
+      return {
+        id: it.id,
+        poId: it[CFG.TS.PO]?String(it[CFG.TS.PO]):"",
+        data: it[CFG.TS.DATA]||"",
+        respId: String(it.assignedById||""),
+        companyId: it.companyId,
+        desc: it.sourceDescription||"",
+        natureza: CFG.NATUREZA_MAP[it[CFG.TS.NATUREZA]]||"",
+        local: CFG.LOCAL_MAP[it[CFG.TS.LOCAL]]||"",
+        unidadeId: it[CFG.TS.UNIDADE]?String(it[CFG.TS.UNIDADE]):"",
+        hTrab: num(it[CFG.TS.H_TRAB]),
+        hExtra: num(it[CFG.TS.H_EXTRA]),
+        hDesl: num(it[CFG.TS.H_DESL])
+      };
+    });
+    /* horas apontadas = trabalhadas + extras + deslocamento */
+    DATA.rows.forEach(function(r){ r.apontado = r.hTrab + r.hExtra + r.hDesl; });
+
+    /* POs únicas referenciadas */
+    var poIds={};
+    DATA.rows.forEach(function(r){ if(r.poId) poIds[r.poId]=1; });
+    var ids=Object.keys(poIds);
+    if(!ids.length) return;
+
+    setStatus("Carregando POs ("+ids.length+")...");
+    /* busca POs em lotes por ID, depois nomes das empresas */
+    return carregarPOs(ids).then(carregarEmpresas);
+  });
+}
+
+/* nomes das empresas e das unidades presentes nos apontamentos */
+function carregarEmpresas(){
+  var comp={}, uni={};
+  DATA.rows.forEach(function(r){
+    if(r.companyId) comp[String(r.companyId)]=1;
+    if(r.unidadeId) uni[r.unidadeId]=1;
+  });
+  var jobs=[];
+  var lComp=Object.keys(comp);
+  if(lComp.length){
+    setStatus("Carregando empresas ("+lComp.length+")...");
+    var cCmds=lComp.map(function(id){return{method:"crm.company.get",params:{id:id}};});
+    for(var i=0;i<cCmds.length;i+=CFG.BATCH_SIZE){
+      jobs.push(batch(cCmds.slice(i,i+CFG.BATCH_SIZE)).then(function(res){
+        res.forEach(function(c){ if(c&&c.ID) DIM.companies[String(c.ID)]=c.TITLE||("Empresa #"+c.ID); });
+      }));
+    }
+  }
+  var lUni=Object.keys(uni);
+  if(lUni.length){
+    var uCmds=lUni.map(function(id){return{method:"crm.item.get",params:{entityTypeId:CFG.UNIDADE_ENTITY,id:id}};});
+    for(var k=0;k<uCmds.length;k+=CFG.BATCH_SIZE){
+      jobs.push(batch(uCmds.slice(k,k+CFG.BATCH_SIZE)).then(function(res){
+        res.forEach(function(r){ var it=r&&r.item; if(it&&it.id) DIM.unidades[String(it.id)]=it.title||("Unidade #"+it.id); });
+      }));
+    }
+  }
+  if(!jobs.length) return;
+  return Promise.all(jobs).catch(function(){/* ignora falha de enriquecimento */});
+}
+
+function carregarPOs(ids){
+  /* batch de crm.item.get para cada PO (lotes de 50) */
+  var cmds=ids.map(function(id){
+    return {method:"crm.item.get",params:{entityTypeId:CFG.PO_ENTITY,id:id}};
+  });
+  var lotes=[];
+  for(var i=0;i<cmds.length;i+=CFG.BATCH_SIZE) lotes.push(cmds.slice(i,i+CFG.BATCH_SIZE));
+  return Promise.all(lotes.map(function(l){return batch(l);})).then(function(results){
+    var dealIds={};
+    results.forEach(function(res){
+      res.forEach(function(r){
+        var it=r&&r.item; if(!it)return;
+        var plan=num(it[CFG.PO.HORAS_PLAN]);
+        var dealId=it[CFG.PO.DEAL_ID]?String(Math.trunc(num(it[CFG.PO.DEAL_ID]))):"";
+        POINFO[String(it.id)]={
+          title: it.title||("PO #"+it.id),
+          planejado: plan,
+          dealId: dealId,
+          respId: String(it.assignedById||"")
+        };
+        if(dealId) dealIds[dealId]=String(it.id);
+      });
+    });
+    /* FALLBACK 1: POs sem horas planejadas mas com ID do deal -> Qtd Horas da deal por ID */
+    var faltantes=Object.keys(POINFO).filter(function(pid){
+      return !POINFO[pid].planejado && POINFO[pid].dealId;
+    }).map(function(pid){ return POINFO[pid].dealId; });
+    faltantes=faltantes.filter(function(v,i,a){return a.indexOf(v)===i;});
+    var passo1=Promise.resolve();
+    if(faltantes.length){
+      setStatus("Horas planejadas via deal (ID) — "+faltantes.length+"...");
+      var dcmds=faltantes.map(function(did){return {method:"crm.deal.get",params:{id:did}};});
+      var dlotes=[];
+      for(var j=0;j<dcmds.length;j+=CFG.BATCH_SIZE) dlotes.push(dcmds.slice(j,j+CFG.BATCH_SIZE));
+      passo1=Promise.all(dlotes.map(function(l){return batch(l);})).then(function(dres){
+        var dealHoras={};
+        dres.forEach(function(res){res.forEach(function(d){if(d&&d.ID)dealHoras[String(d.ID)]=num(d[CFG.DEAL_HORAS]);});});
+        Object.keys(POINFO).forEach(function(pid){
+          var info=POINFO[pid];
+          if(!info.planejado&&info.dealId&&dealHoras[info.dealId]) info.planejado=dealHoras[info.dealId];
+        });
+      });
+    }
+    /* FALLBACK 2: POs ainda sem horas -> casa PO.title com deal.UF_CRM_1742312440 (PO/Contrato).
+       Soma a Qtd Horas de todas as deals cujo campo PO/Contrato bate com o título da PO. */
+    return passo1.then(function(){
+      var semHoras=Object.keys(POINFO).filter(function(pid){ return !POINFO[pid].planejado; });
+      if(!semHoras.length) return;
+      /* índice título(normalizado) -> [poIds] */
+      var porTitulo={};
+      semHoras.forEach(function(pid){
+        var t=normTitle(POINFO[pid].title);
+        if(t) (porTitulo[t]=porTitulo[t]||[]).push(pid);
+      });
+      if(!Object.keys(porTitulo).length) return;
+      setStatus("Horas planejadas via deal (nº PO)...");
+      /* busca todas as deals com Qtd Horas > 0 e PO/Contrato preenchido */
+      return listAllJson("crm.deal.list",{
+        filter:{ ">"+CFG.DEAL_HORAS:0, "!UF_CRM_1742312440":"" },
+        select:["ID","UF_CRM_1742312440",CFG.DEAL_HORAS]
+      },function(r){return r||[];}).then(function(deals){
+        var horasPorTitulo={};
+        deals.forEach(function(d){
+          var t=normTitle(d.UF_CRM_1742312440);
+          if(!t) return;
+          horasPorTitulo[t]=(horasPorTitulo[t]||0)+num(d[CFG.DEAL_HORAS]);
+        });
+        Object.keys(porTitulo).forEach(function(t){
+          if(horasPorTitulo[t]) porTitulo[t].forEach(function(pid){
+            if(!POINFO[pid].planejado) POINFO[pid].planejado=horasPorTitulo[t];
+          });
+        });
+      });
+    });
+  });
+}
+function normTitle(s){ return String(s==null?"":s).trim().toUpperCase(); }
+
+/* ===================== FILTRO + RENDER ===================== */
+function aplicarFiltrosERender(){
+  var fResp=$("rhResp").value;
+  var fPo=$("rhPo").value;
+  var q=($("rhBusca").value||"").trim().toLowerCase();
+
+  var rows=DATA.rows.filter(function(r){
+    if(fResp && r.respId!==fResp) return false;
+    if(fPo && r.poId!==fPo) return false;
+    if(q){
+      var po=(POINFO[r.poId]&&POINFO[r.poId].title)||"";
+      var resp=DIM.users[r.respId]?DIM.users[r.respId].nome:"";
+      var cli=r.companyId?(DIM.companies[String(r.companyId)]||""):"";
+      var uni=r.unidadeId?(DIM.unidades[r.unidadeId]||""):"";
+      var blob=(po+" "+resp+" "+cli+" "+uni+" "+r.desc+" "+r.natureza+" "+r.local).toLowerCase();
+      if(blob.indexOf(q)<0) return false;
+    }
+    return true;
+  });
+
+  /* agrupa por PO, ordena por data dentro do grupo, calcula acumulado + saldo */
+  var grupos={};
+  rows.forEach(function(r){
+    var k=r.poId||"__sem_po__";
+    (grupos[k]=grupos[k]||[]).push(r);
+  });
+  var ordemPO=Object.keys(grupos).sort(function(a,b){
+    var ta=(POINFO[a]&&POINFO[a].title)||a, tb=(POINFO[b]&&POINFO[b].title)||b;
+    return String(ta).localeCompare(String(tb),"pt-BR");
+  });
+
+  var html="", totApontado=0, totPlan=0, posEstouradas=0, posOk=0, nRows=0;
+  ordemPO.forEach(function(poId){
+    var lista=grupos[poId].sort(function(a,b){return String(a.data).localeCompare(String(b.data));});
+    var info=POINFO[poId]||{title:(poId==="__sem_po__"?"(sem PO vinculada)":("PO #"+poId)),planejado:0};
+    var plan=info.planejado||0;
+    var acum=0;
+    var somaGrupo=lista.reduce(function(s,r){return s+r.apontado;},0);
+    totPlan+=plan;
+
+    /* cabeçalho do grupo PO */
+    var saldoFinal=plan-somaGrupo;
+    var tagG=!plan?'<span class="rhTag none">sem planejado</span>':
+      (saldoFinal<0?'<span class="rhTag bad">estourou '+h(-saldoFinal)+'</span>':'<span class="rhTag ok">saldo '+h(saldoFinal)+'</span>');
+    if(plan){ if(saldoFinal<0)posEstouradas++; else posOk++; }
+
+    html+='<tr class="rhPoRow"><td colspan="8">▸ PO '+esc(info.title)+'</td>'
+        +'<td class="num">'+h(somaGrupo)+'</td><td class="num"></td>'
+        +'<td class="num">'+(plan?h(plan):"—")+'</td>'
+        +'<td class="num '+(saldoFinal<0?"rhNeg":"rhPos")+'">'+(plan?h(saldoFinal):"—")+'</td>'
+        +'<td>'+tagG+'</td></tr>';
+
+    lista.forEach(function(r){
+      acum+=r.apontado; totApontado+=r.apontado; nRows++;
+      var saldo=plan?(plan-acum):null;
+      var tag;
+      if(!plan){tag='<span class="rhTag none">—</span>';}
+      else if(saldo<0){tag='<span class="rhTag bad">estourou</span>';}
+      else if(saldo<=plan*0.1){tag='<span class="rhTag warn">no limite</span>';}
+      else{tag='<span class="rhTag ok">ok</span>';}
+      var resp=DIM.users[r.respId]?DIM.users[r.respId].nome:("#"+r.respId);
+      html+='<tr>'
+        +'<td>'+fmtData(r.data)+'</td>'
+        +'<td>'+esc(info.title)+'</td>'
+        +'<td>'+esc(r.companyId?(DIM.companies[String(r.companyId)]||("Empresa #"+r.companyId)):"")+'</td>'
+        +'<td>'+esc(resp)+'</td>'
+        +'<td>'+esc(r.unidadeId?(DIM.unidades[r.unidadeId]||("Un #"+r.unidadeId)):"")+'</td>'
+        +'<td>'+esc(r.natureza)+'</td>'
+        +'<td>'+esc(r.local)+'</td>'
+        +'<td class="rhDesc">'+esc(r.desc)+'</td>'
+        +'<td class="num">'+h(r.apontado)+'</td>'
+        +'<td class="num">'+h(acum)+'</td>'
+        +'<td class="num">'+(plan?h(plan):"—")+'</td>'
+        +'<td class="num '+(saldo!=null&&saldo<0?"rhNeg":"rhPos")+'">'+(saldo!=null?h(saldo):"—")+'</td>'
+        +'<td>'+tag+'</td>'
+        +'</tr>';
+    });
+  });
+
+  $("rhBody").innerHTML = html || '<tr><td colspan="13" style="text-align:center;padding:24px;color:#8a97a6">Nenhum apontamento no período/filtro.</td></tr>';
+
+  /* cards resumo */
+  var saldoTotal=totPlan-totApontado;
+  var cards=[
+    {lbl:"Apontamentos", val:nRows, hint:"linhas de timesheet"},
+    {lbl:"Horas apontadas", val:h(totApontado), hint:"trab. + extra + desloc."},
+    {lbl:"Horas planejadas", val:h(totPlan), hint:"soma das POs"},
+    {lbl:"Saldo total", val:h(saldoTotal), hint:saldoTotal<0?"estourou":"disponível", cls:saldoTotal<0?"bad":"ok"},
+    {lbl:"POs dentro", val:posOk, hint:"com saldo positivo", cls:"ok"},
+    {lbl:"POs estouradas", val:posEstouradas, hint:"passaram do planejado", cls:posEstouradas?"bad":"ok"}
+  ];
+  $("rhCards").innerHTML=cards.map(function(c){
+    return '<div class="rhCard '+(c.cls||"")+'"><div class="lbl">'+c.lbl+'</div><div class="val">'+c.val+'</div><div class="hint">'+c.hint+'</div></div>';
+  }).join("");
+
+  DATA._filtradas=rows;
+  setStatus(nRows+" apontamentos · "+ordemPO.length+" POs · atualizado "+new Date().toLocaleTimeString("pt-BR"));
+}
+
+/* ===================== FILTROS: popular selects ===================== */
+function popularSelects(){
+  /* responsáveis presentes nos dados */
+  var respSel=$("rhResp");
+  while(respSel.options.length>1)respSel.remove(1);
+  var ids={};DATA.rows.forEach(function(r){if(r.respId)ids[r.respId]=1;});
+  Object.keys(ids).map(function(id){return{id:id,nome:DIM.users[id]?DIM.users[id].nome:("#"+id)};})
+    .sort(function(a,b){return a.nome.localeCompare(b.nome,"pt-BR");})
+    .forEach(function(u){var o=document.createElement("option");o.value=u.id;o.textContent=u.nome;respSel.appendChild(o);});
+
+  var poSel=$("rhPo");
+  while(poSel.options.length>1)poSel.remove(1);
+  var pos={};DATA.rows.forEach(function(r){if(r.poId)pos[r.poId]=1;});
+  Object.keys(pos).map(function(id){return{id:id,title:(POINFO[id]&&POINFO[id].title)||("PO #"+id)};})
+    .sort(function(a,b){return String(a.title).localeCompare(String(b.title),"pt-BR");})
+    .forEach(function(p){var o=document.createElement("option");o.value=p.id;o.textContent=p.title;poSel.appendChild(o);});
+}
+
+/* ===================== EXPORT CSV ===================== */
+function exportarCSV(){
+  var rows=DATA._filtradas||DATA.rows;
+  var grupos={};
+  rows.forEach(function(r){var k=r.poId||"__sem_po__";(grupos[k]=grupos[k]||[]).push(r);});
+  var head=["Data","PO","Cliente","Responsavel","Unidade","Natureza","Local","Descricao","Horas trabalhadas","Horas extras","Horas deslocamento","Apontado","Acumulado PO","Planejado","Saldo","Status"];
+  var linhas=[head];
+  Object.keys(grupos).sort().forEach(function(poId){
+    var info=POINFO[poId]||{title:poId,planejado:0};
+    var plan=info.planejado||0, acum=0;
+    grupos[poId].sort(function(a,b){return String(a.data).localeCompare(String(b.data));}).forEach(function(r){
+      acum+=r.apontado;
+      var saldo=plan?plan-acum:"";
+      var status=!plan?"sem planejado":(plan-acum<0?"estourou":"ok");
+      var resp=DIM.users[r.respId]?DIM.users[r.respId].nome:("#"+r.respId);
+      var cli=r.companyId?(DIM.companies[String(r.companyId)]||("Empresa #"+r.companyId)):"";
+      var uni=r.unidadeId?(DIM.unidades[r.unidadeId]||("Un #"+r.unidadeId)):"";
+      linhas.push([fmtData(r.data),info.title,cli,resp,uni,r.natureza,r.local,r.desc,
+        r.hTrab,r.hExtra,r.hDesl,r.apontado,acum,plan||"",saldo,status]);
+    });
+  });
+  var csv=linhas.map(function(l){
+    return l.map(function(c){
+      var s=String(c==null?"":c);
+      if(/[",;\n]/.test(s))s='"'+s.replace(/"/g,'""')+'"';
+      return s;
+    }).join(";");
+  }).join("\r\n");
+  var blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8;"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url;a.download="horas_po_"+$("rhDe").value+"_a_"+$("rhAte").value+".csv";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ===================== PERÍODOS ===================== */
+function setPeriodo(preset){
+  var hoje=new Date(), de, ate=new Date(hoje);
+  if(preset==="7"){de=new Date(hoje);de.setDate(de.getDate()-6);}
+  else if(preset==="30"){de=new Date(hoje);de.setDate(de.getDate()-29);}
+  else if(preset==="mes"){de=new Date(hoje.getFullYear(),hoje.getMonth(),1);}
+  else if(preset==="mesant"){de=new Date(hoje.getFullYear(),hoje.getMonth()-1,1);ate=new Date(hoje.getFullYear(),hoje.getMonth(),0);}
+  else if(preset==="ano"){de=new Date(hoje.getFullYear(),0,1);}
+  else{de=new Date(hoje.getFullYear(),hoje.getMonth(),1);}
+  $("rhDe").value=iso(de);$("rhAte").value=iso(ate);
+}
+
+/* ===================== ATUALIZAR ===================== */
+var carregando=false;
+function atualizar(){
+  if(carregando)return;
+  carregando=true;
+  var de=$("rhDe").value, ate=$("rhAte").value;
+  POINFO={};
+  $("rhMeta").textContent="Período "+fmtData(de)+" a "+fmtData(ate);
+  var t0=Date.now();
+  carregar(de,ate).then(function(){
+    popularSelects();
+    aplicarFiltrosERender();
+    $("rhMeta").innerHTML="Período "+fmtData(de)+" a "+fmtData(ate)+"<br>"+((Date.now()-t0)/1000).toFixed(1)+"s";
+  }).catch(function(e){
+    setStatus("Erro: "+e.message);
+    console.error(e);
+  }).then(function(){carregando=false;});
+}
+
+/* ===================== INIT ===================== */
+function init(){
+  setPeriodo("mes");
+  /* presets */
+  document.querySelectorAll(".rhP").forEach(function(b){
+    b.addEventListener("click",function(){
+      document.querySelectorAll(".rhP").forEach(function(x){x.classList.remove("rhPon");});
+      b.classList.add("rhPon");
+      setPeriodo(b.getAttribute("data-preset"));
+      atualizar();
+    });
+  });
+  $("rhGo").addEventListener("click",atualizar);
+  $("rhCsv").addEventListener("click",exportarCSV);
+  $("rhResp").addEventListener("change",aplicarFiltrosERender);
+  $("rhPo").addEventListener("change",aplicarFiltrosERender);
+  $("rhBusca").addEventListener("input",function(){
+    clearTimeout(init._t);init._t=setTimeout(aplicarFiltrosERender,250);
+  });
+
+  setStatus("Carregando usuários...");
+  carregarUsuarios().then(atualizar).catch(function(e){
+    setStatus("Erro inicial: "+e.message);console.error(e);
+  });
+}
+
+/* Espera o container do relatório existir no DOM antes de iniciar
+   (o bloco HTML do Bitrix pode injetar o markup em momentos diferentes). */
+function boot(){
+  if($("rhWrap") && $("rhStatus")){ init(); return; }
+  var tries=0;
+  var iv=setInterval(function(){
+    tries++;
+    if($("rhWrap") && $("rhStatus")){ clearInterval(iv); init(); }
+    else if(tries>60){ clearInterval(iv); }   /* desiste após ~15s */
+  },250);
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);
+else boot();
+})();
