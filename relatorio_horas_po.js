@@ -287,8 +287,9 @@ function carregarPOs(ids){
       if(!Object.keys(porTitulo).length) return;
       setStatus("Horas planejadas via deal (nº PO)...");
       /* busca todas as deals com Qtd Horas > 0 e PO/Contrato preenchido */
+      var dfilter={ "!UF_CRM_1742312440":"" }; dfilter[">"+CFG.DEAL_HORAS]=0;
       return listAllJson("crm.deal.list",{
-        filter:{ ">"+CFG.DEAL_HORAS:0, "!UF_CRM_1742312440":"" },
+        filter:dfilter,
         select:["ID","UF_CRM_1742312440",CFG.DEAL_HORAS]
       },function(r){return r||[];}).then(function(deals){
         var horasPorTitulo={};
