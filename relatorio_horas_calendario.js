@@ -131,8 +131,22 @@ var DOW=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 var DIM={users:{},companies:{},unidades:{}};
 var DATA={rows:[]};      /* linhas de timesheet enriquecidas do mês */
 var POINFO={};           /* poId -> {title} */
-var VIEW={ano:0, mes:0}; /* mês exibido (mes 0-11) */
+var MODO="mes";          /* "mes" | "semana" */
+var VIEW={ano:0, mes:0}; /* mês exibido (mes 0-11) — usado na visão mensal */
+var SEMANA=null;         /* Date do domingo da semana exibida — usado na visão semanal */
 var DIA_SEL=null;        /* dia selecionado p/ painel de detalhe */
+
+/* domingo (início) da semana que contém a data d */
+function inicioSemana(d){ var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-x.getDay()); return x; }
+function addDias(d,n){ var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()+n); return x; }
+/* intervalo [de,ate] (Date) do que está visível conforme o modo */
+function intervaloVisivel(){
+  if(MODO==="semana"){
+    var ini=SEMANA||inicioSemana(new Date());
+    return {de:ini, ate:addDias(ini,6)};
+  }
+  return {de:new Date(VIEW.ano,VIEW.mes,1), ate:new Date(VIEW.ano,VIEW.mes+1,0)};
+}
 
 /* ===================== DIMENSÕES (usuários) ===================== */
 function carregarUsuarios(){
@@ -146,12 +160,12 @@ function carregarUsuarios(){
   });
 }
 
-/* ===================== CARGA DO MÊS ===================== */
-function carregar(ano, mes){
+/* ===================== CARGA DO INTERVALO ===================== */
+/* Carrega apontamentos entre duas datas (Date). Serve tanto p/ o mês
+   (visão mensal) quanto p/ a semana (visão semanal, que pode cruzar meses). */
+function carregar(dtDe, dtAte){
   setStatus("Carregando apontamentos...");
-  var primeiro=new Date(ano,mes,1);
-  var ultimo=new Date(ano,mes+1,0);
-  var de=iso(primeiro), ate=iso(ultimo);
+  var de=iso(dtDe), ate=iso(dtAte);
 
   var filtro={};
   filtro[">="+CFG.TS.DATA]=de+"T00:00:00";
@@ -263,93 +277,135 @@ function corIntensidade(total){
   return "lv4";   /* acima da meta */
 }
 
-function render(){
-  var porDia=agregarPorDia();
-  DATA._porDia=porDia;
-
-  var ano=VIEW.ano, mes=VIEW.mes;
-  var primeiro=new Date(ano,mes,1);
-  var diasNoMes=new Date(ano,mes+1,0).getDate();
-  var offset=primeiro.getDay();  /* 0=Dom */
-
-  /* label do mês */
-  $("rhMesLbl").textContent = MESES[mes]+" de "+ano;
-
-  /* cabeçalho dos dias da semana */
-  var head='';
-  DOW.forEach(function(d){ head+='<div class="rhDow">'+d+'</div>'; });
-
-  /* células */
-  var cells='';
-  /* dias vazios antes do dia 1 */
-  for(var i=0;i<offset;i++) cells+='<div class="rhCell rhEmpty"></div>';
-
-  var hojeIso=iso(new Date());
-  var totMes=0, diasTrab=0;
-  for(var dia=1;dia<=diasNoMes;dia++){
-    var dt=new Date(ano,mes,dia);
-    var key=iso(dt);
-    var info=porDia[key];
-    var dow=dt.getDay();
-    var fds=(dow===0||dow===6);
-    var total=info?info.total:0;
-    if(total>0){ totMes+=total; diasTrab++; }
-
-    var posHtml='';
-    if(info){
-      /* lista as POs do dia (top 3) com horas */
-      var poArr=Object.keys(info.pos).map(function(pid){
-        return {t:(POINFO[pid]&&POINFO[pid].title)||("PO #"+pid), horas:info.pos[pid]};
-      }).sort(function(a,b){return b.horas-a.horas;});
-      var top=poArr.slice(0,3);
-      top.forEach(function(p){
-        posHtml+='<div class="rhChip" title="'+esc(p.t)+' · '+h(p.horas)+'">'
-              +   '<span class="rhChipH">'+hplain(p.horas)+'</span> '+esc(p.t)
-              + '</div>';
-      });
-      if(poArr.length>3) posHtml+='<div class="rhMore">+'+(poArr.length-3)+' PO(s)</div>';
-    }
-
-    var cls="rhCell "+(fds?"rhFds ":"")+corIntensidade(total);
-    if(key===hojeIso) cls+=" rhHoje";
-    if(key===DIA_SEL) cls+=" rhSel";
-    cells+='<div class="'+cls+'" data-dia="'+key+'"'+(info?'':' data-vazio="1"')+'>'
-        +   '<div class="rhCellTop"><span class="rhDiaN">'+dia+'</span>'
-        +     (total>0?'<span class="rhDiaH">'+h(total)+'</span>':'')+'</div>'
-        +   '<div class="rhCellBody">'+posHtml+'</div>'
-        + '</div>';
+/* HTML das POs de um dia. maxPos = quantas mostrar antes de resumir em "+N".
+   Passe 0 para listar todas (usado na visão semanal, que tem mais espaço). */
+function chipsDoDia(info, maxPos){
+  if(!info) return '';
+  var poArr=Object.keys(info.pos).map(function(pid){
+    return {t:(POINFO[pid]&&POINFO[pid].title)||("PO #"+pid), horas:info.pos[pid]};
+  }).sort(function(a,b){return b.horas-a.horas;});
+  var lim = maxPos>0 ? Math.min(maxPos,poArr.length) : poArr.length;
+  var out='';
+  for(var i=0;i<lim;i++){
+    var p=poArr[i];
+    out+='<div class="rhChip" title="'+esc(p.t)+' · '+h(p.horas)+'">'
+      +   '<span class="rhChipH">'+hplain(p.horas)+'</span> '+esc(p.t)
+      + '</div>';
   }
-  /* completa a última semana */
-  var totalCells=offset+diasNoMes;
-  var resto=totalCells%7; if(resto) for(var z=0;z<7-resto;z++) cells+='<div class="rhCell rhEmpty"></div>';
+  if(maxPos>0 && poArr.length>maxPos) out+='<div class="rhMore">+'+(poArr.length-maxPos)+' PO(s)</div>';
+  return out;
+}
 
-  $("rhGrid").innerHTML = '<div class="rhDowRow">'+head+'</div><div class="rhCells">'+cells+'</div>';
+/* célula de um dia (usada nas duas visões). extra: classes adicionais. */
+function celulaDia(dt, info, maxPos, extraCls){
+  var key=iso(dt);
+  var dow=dt.getDay();
+  var fds=(dow===0||dow===6);
+  var total=info?info.total:0;
+  var cls="rhCell "+(fds?"rhFds ":"")+corIntensidade(total)+(extraCls?(" "+extraCls):"");
+  if(key===iso(new Date())) cls+=" rhHoje";
+  if(key===DIA_SEL) cls+=" rhSel";
+  return '<div class="'+cls+'" data-dia="'+key+'"'+(info?'':' data-vazio="1"')+'>'
+      +   '<div class="rhCellTop"><span class="rhDiaN">'+dt.getDate()+'</span>'
+      +     (total>0?'<span class="rhDiaH">'+h(total)+'</span>':'')+'</div>'
+      +   '<div class="rhCellBody">'+chipsDoDia(info,maxPos)+'</div>'
+      + '</div>';
+}
 
-  /* liga clique nos dias com apontamento */
+/* dispatcher: escolhe a visão conforme o MODO */
+function render(){
+  DATA._porDia=agregarPorDia();
+  if(MODO==="semana") renderSemana();
+  else renderMes();
+  ligarCliquesDias();
+  renderCards();
+  renderPainel();
+}
+
+/* liga clique nos dias com apontamento (comum às duas visões) */
+function ligarCliquesDias(){
   Array.prototype.forEach.call(document.querySelectorAll("#rhGrid .rhCell"),function(c){
     if(c.getAttribute("data-vazio")||!c.getAttribute("data-dia")) return;
     c.addEventListener("click",function(){
       DIA_SEL = (DIA_SEL===c.getAttribute("data-dia")) ? null : c.getAttribute("data-dia");
       render();
-      renderPainel();
     });
   });
+}
 
-  /* cards resumo do mês */
+/* ---------- VISÃO MENSAL ---------- */
+function renderMes(){
+  var porDia=DATA._porDia;
+  var ano=VIEW.ano, mes=VIEW.mes;
+  var primeiro=new Date(ano,mes,1);
+  var diasNoMes=new Date(ano,mes+1,0).getDate();
+  var offset=primeiro.getDay();
+
+  $("rhMesLbl").textContent = MESES[mes]+" de "+ano;
+
+  var head='';
+  DOW.forEach(function(d){ head+='<div class="rhDow">'+d+'</div>'; });
+
+  var cells='';
+  for(var i=0;i<offset;i++) cells+='<div class="rhCell rhEmpty"></div>';
+  for(var dia=1;dia<=diasNoMes;dia++){
+    var dt=new Date(ano,mes,dia);
+    cells+=celulaDia(dt, porDia[iso(dt)], 3, "");
+  }
+  var totalCells=offset+diasNoMes;
+  var resto=totalCells%7; if(resto) for(var z=0;z<7-resto;z++) cells+='<div class="rhCell rhEmpty"></div>';
+
+  $("rhGrid").className="modo-mes";
+  $("rhGrid").innerHTML = '<div class="rhDowRow">'+head+'</div><div class="rhCells">'+cells+'</div>';
+}
+
+/* ---------- VISÃO SEMANAL ---------- */
+function renderSemana(){
+  var porDia=DATA._porDia;
+  var ini=SEMANA||inicioSemana(new Date());
+  var fim=addDias(ini,6);
+  /* label: "24/08 – 30/08 de 2026" */
+  $("rhMesLbl").textContent = fmtCurto(ini)+" – "+fmtCurto(fim)+" de "+fim.getFullYear();
+
+  var head='', cells='';
+  for(var i=0;i<7;i++){
+    var dt=addDias(ini,i);
+    head+='<div class="rhDow">'+DOW[dt.getDay()]+' '+String(dt.getDate()).padStart(2,"0")+'/'+String(dt.getMonth()+1).padStart(2,"0")+'</div>';
+    cells+=celulaDia(dt, porDia[iso(dt)], 0, "rhCellWk");  /* 0 = lista todas as POs */
+  }
+  $("rhGrid").className="modo-semana";
+  $("rhGrid").innerHTML = '<div class="rhDowRow">'+head+'</div><div class="rhCells">'+cells+'</div>';
+}
+function fmtCurto(d){ return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0"); }
+
+/* ---------- CARDS DE RESUMO (do intervalo visível) ---------- */
+function renderCards(){
+  var porDia=DATA._porDia;
+  var iv=intervaloVisivel();
+  var totPer=0, diasTrab=0, diasNoPer=0;
+  /* percorre cada dia do intervalo p/ contar dias e horas */
+  var cur=new Date(iv.de.getFullYear(),iv.de.getMonth(),iv.de.getDate());
+  while(cur<=iv.ate){
+    diasNoPer++;
+    var info=porDia[iso(cur)];
+    if(info && info.total>0){ totPer+=info.total; diasTrab++; }
+    cur=addDias(cur,1);
+  }
   var respNome = $("rhResp").value && DIM.users[$("rhResp").value] ? DIM.users[$("rhResp").value].nome : "Todos os responsáveis";
-  var media = diasTrab?totMes/diasTrab:0;
+  var media = diasTrab?totPer/diasTrab:0;
+  var periodoLbl = MODO==="semana" ? (fmtCurto(iv.de)+"–"+fmtCurto(iv.ate)) : (MESES[VIEW.mes]+"/"+VIEW.ano);
+  var horasLbl = MODO==="semana" ? "Horas na semana" : "Horas no mês";
+  var lancLbl  = MODO==="semana" ? "lançamentos na semana" : "lançamentos no mês";
   var cards=[
-    {lbl:"Responsável", val:esc(respNome), hint:MESES[mes]+"/"+ano, small:true},
-    {lbl:"Horas no mês", val:h(totMes), hint:"trab. + extra + desloc."},
-    {lbl:"Dias com apontamento", val:nfInt.format(diasTrab), hint:"de "+diasNoMes+" dias"},
+    {lbl:"Responsável", val:esc(respNome), hint:periodoLbl, small:true},
+    {lbl:horasLbl, val:h(totPer), hint:"trab. + extra + desloc."},
+    {lbl:"Dias com apontamento", val:nfInt.format(diasTrab), hint:"de "+diasNoPer+" dias"},
     {lbl:"Média por dia trabalhado", val:h(media), hint:"meta "+CFG.META_DIA+"h/dia"},
-    {lbl:"Apontamentos", val:nfInt.format(DATA.rows.length), hint:"lançamentos no mês"}
+    {lbl:"Apontamentos", val:nfInt.format(DATA.rows.length), hint:lancLbl}
   ];
   $("rhCards").innerHTML=cards.map(function(c){
     return '<div class="rhCard"><div class="lbl">'+c.lbl+'</div><div class="val'+(c.small?" sm":"")+'">'+c.val+'</div><div class="hint">'+c.hint+'</div></div>';
   }).join("");
-
-  renderPainel();
   setStatus(diasTrab+" dias com apontamento · "+DATA.rows.length+" lançamentos · atualizado "+new Date().toLocaleTimeString("pt-BR"));
 }
 
@@ -433,16 +489,50 @@ function exportarCSV(){
   var url=URL.createObjectURL(blob);
   var respNome=($("rhResp").value&&DIM.users[$("rhResp").value])?DIM.users[$("rhResp").value].nome.replace(/\s+/g,"_"):"todos";
   var a=document.createElement("a");
-  a.href=url;a.download="calendario_horas_"+respNome+"_"+VIEW.ano+"-"+String(VIEW.mes+1).padStart(2,"0")+".csv";
+  var iv=intervaloVisivel();
+  var sufixo = MODO==="semana" ? (iso(iv.de)+"_a_"+iso(iv.ate)) : (VIEW.ano+"-"+String(VIEW.mes+1).padStart(2,"0"));
+  a.href=url;a.download="calendario_horas_"+respNome+"_"+sufixo+".csv";
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-/* ===================== NAVEGAÇÃO DE MÊS ===================== */
-function irMes(delta){
-  var m=VIEW.mes+delta, a=VIEW.ano;
-  if(m<0){m=11;a--;} else if(m>11){m=0;a++;}
-  VIEW.mes=m; VIEW.ano=a; DIA_SEL=null;
+/* ===================== NAVEGAÇÃO (mês ou semana) ===================== */
+function navegar(delta){
+  DIA_SEL=null;
+  if(MODO==="semana"){
+    SEMANA = addDias(SEMANA||inicioSemana(new Date()), delta*7);
+  }else{
+    var m=VIEW.mes+delta, a=VIEW.ano;
+    if(m<0){m=11;a--;} else if(m>11){m=0;a++;}
+    VIEW.mes=m; VIEW.ano=a;
+  }
+  atualizar();
+}
+function irHoje(){
+  var d=new Date(); DIA_SEL=null;
+  VIEW.ano=d.getFullYear(); VIEW.mes=d.getMonth();
+  SEMANA=inicioSemana(d);
+  atualizar();
+}
+/* troca de visão preservando o "foco": ao ir p/ semana, usa a semana que
+   contém o dia selecionado (ou hoje). Ao voltar p/ mês, usa o mês da semana. */
+function setModo(modo){
+  if(modo===MODO) return;
+  if(modo==="semana"){
+    var base = DIA_SEL ? new Date(DIA_SEL+"T00:00:00")
+             : (VIEW.ano ? new Date(VIEW.ano,VIEW.mes,1) : new Date());
+    /* se hoje cai no mês exibido, foca a semana de hoje; senão a 1ª semana do mês */
+    var hoje=new Date();
+    if(hoje.getFullYear()===VIEW.ano && hoje.getMonth()===VIEW.mes) base=hoje;
+    SEMANA=inicioSemana(base);
+  }else{
+    var ref = SEMANA || inicioSemana(new Date());
+    VIEW.ano=ref.getFullYear(); VIEW.mes=ref.getMonth();
+  }
+  MODO=modo; DIA_SEL=null;
+  document.querySelectorAll(".rhModoBtn").forEach(function(b){
+    b.classList.toggle("on", b.getAttribute("data-modo")===MODO);
+  });
   atualizar();
 }
 
@@ -454,9 +544,12 @@ function atualizar(){
   POINFO={};
   var t0=Date.now();
   setStatus("Carregando...");
-  carregar(VIEW.ano,VIEW.mes).then(function(){
+  var iv=intervaloVisivel();
+  carregar(iv.de,iv.ate).then(function(){
     render();
-    $("rhMeta").innerHTML=MESES[VIEW.mes]+" de "+VIEW.ano+"<br>"+((Date.now()-t0)/1000).toFixed(1)+"s";
+    var lbl = MODO==="semana" ? (fmtCurto(iv.de)+" a "+fmtCurto(iv.ate)+" de "+iv.ate.getFullYear())
+                              : (MESES[VIEW.mes]+" de "+VIEW.ano);
+    $("rhMeta").innerHTML=lbl+"<br>"+((Date.now()-t0)/1000).toFixed(1)+"s";
   }).catch(function(e){
     setStatus("Erro: "+e.message);
     console.error(e);
@@ -467,12 +560,16 @@ function atualizar(){
 function init(){
   var hoje=new Date();
   VIEW.ano=hoje.getFullYear(); VIEW.mes=hoje.getMonth();
+  SEMANA=inicioSemana(hoje);
 
-  $("rhPrev").addEventListener("click",function(){irMes(-1);});
-  $("rhNext").addEventListener("click",function(){irMes(1);});
-  $("rhHoje").addEventListener("click",function(){var d=new Date();VIEW.ano=d.getFullYear();VIEW.mes=d.getMonth();DIA_SEL=null;atualizar();});
+  $("rhPrev").addEventListener("click",function(){navegar(-1);});
+  $("rhNext").addEventListener("click",function(){navegar(1);});
+  $("rhHoje").addEventListener("click",irHoje);
   $("rhResp").addEventListener("change",function(){DIA_SEL=null;atualizar();});
   $("rhCsv").addEventListener("click",exportarCSV);
+  document.querySelectorAll(".rhModoBtn").forEach(function(b){
+    b.addEventListener("click",function(){ setModo(b.getAttribute("data-modo")); });
+  });
 
   setStatus("Carregando usuários...");
   carregarUsuarios().then(function(){
