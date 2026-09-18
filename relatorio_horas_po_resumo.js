@@ -322,7 +322,11 @@ function agregarPorPO(){
 
   var rows=DATA.rows.filter(function(r){
     if(fResp && r.respId!==fResp) return false;
-    if(fPo && r.poId!==fPo) return false;
+    if(fPo){
+      /* o filtro de PO agora casa pelo NÚMERO da PO (consistente com o agrupamento) */
+      var poNum=(POINFO[r.poId]&&POINFO[r.poId].title)?normTitle(POINFO[r.poId].title):(r.poId?("PO #"+r.poId):"");
+      if(poNum!==fPo) return false;
+    }
     if(q){
       var po=(POINFO[r.poId]&&POINFO[r.poId].title)||"";
       var resp=DIM.users[r.respId]?DIM.users[r.respId].nome:"";
@@ -334,21 +338,48 @@ function agregarPorPO(){
     return true;
   });
 
-  /* agrupa por PO */
+  /* agrupa por NÚMERO da PO (título), não pelo id do item.
+     Vários itens de PO (poId distintos) podem compartilhar o mesmo número.
+     Agrupando pelo número, o saldo vira uma única conta corrente por PO —
+     o planejado é contado uma só vez e não "vaza" para outra linha. */
   var grupos={};
   rows.forEach(function(r){
-    var k=r.poId||"__sem_po__";
-    (grupos[k]=grupos[k]||[]).push(r);
+    var info=POINFO[r.poId];
+    var numeroPo = info && info.title ? normTitle(info.title)
+                 : (r.poId ? "PO #"+r.poId : "__sem_po__");
+    (grupos[numeroPo]=grupos[numeroPo]||[]).push(r);
   });
 
-  var resumo=Object.keys(grupos).map(function(poId){
-    var lista=grupos[poId].slice().sort(function(a,b){return String(a.data).localeCompare(String(b.data));});
-    var info=POINFO[poId]||{title:(poId==="__sem_po__"?"(sem PO vinculada)":("PO #"+poId)),planejado:0,respId:""};
+  var resumo=Object.keys(grupos).map(function(chave){
+    /* conta corrente por DATA: ordena todos os lançamentos da PO (de todos os itens
+       que compartilham o número) cronologicamente; desempata por id do lançamento
+       para o acumulado ficar determinístico quando há mais de um na mesma data. */
+    var lista=grupos[chave].slice().sort(function(a,b){
+      var c=String(a.data).localeCompare(String(b.data));
+      if(c!==0) return c;
+      return (Number(a.id)||0)-(Number(b.id)||0);
+    });
+    /* título exibido: usa o título original do primeiro item com PO conhecida */
+    var primeiroComInfo=null;
+    for(var i=0;i<lista.length;i++){ if(POINFO[lista[i].poId]){ primeiroComInfo=POINFO[lista[i].poId]; break; } }
+    var title = primeiroComInfo ? primeiroComInfo.title
+              : (chave==="__sem_po__" ? "(sem PO vinculada)" : chave);
+    /* poIds distintos que compõem esta PO (usado no toggle do filtro/expand) */
+    var poIdsGrupo={}; lista.forEach(function(r){ if(r.poId) poIdsGrupo[r.poId]=1; });
+    /* PLANEJADO contado UMA vez por número de PO: pega o maior valor planejado
+       entre os itens que compartilham o número (evita somar duplicatas). */
+    var planPorItem={};
+    lista.forEach(function(r){
+      var inf=POINFO[r.poId];
+      if(inf && r.poId) planPorItem[r.poId]=inf.planejado||0;
+    });
     var apontado=lista.reduce(function(s,r){return s+r.apontado;},0);
     var trab=lista.reduce(function(s,r){return s+r.hTrab;},0);
     var extra=lista.reduce(function(s,r){return s+r.hExtra;},0);
     var desl=lista.reduce(function(s,r){return s+r.hDesl;},0);
-    var plan=info.planejado||0;
+    var plan=Object.keys(planPorItem).reduce(function(m,k){return Math.max(m,planPorItem[k]);},0);
+    var info={title:title, planejado:plan, respId:(primeiroComInfo?primeiroComInfo.respId:"")};
+    var poId=Object.keys(poIdsGrupo)[0]||chave; /* id representativo p/ data-po */
     var saldo=plan?plan-apontado:null;
     var perc=plan?(apontado/plan*100):null;
     /* status: sem planejado / ok (<90%) / no limite (90-100%) / estourou (>100%) */
@@ -459,7 +490,7 @@ function render(){
       +'<td class="rhCaret"><span class="rhArrow">'+(aberto?'▾':'▸')+'</span></td>'
       +'<td class="rhPoTitle">'+esc(g.title)+'</td>'
       +'<td>'+esc(g.cliente)+'</td>'
-      +'<td>'+esc(g.responsavel)+'</td>'
+      +'<td class="rhRespCol">—</td>'  /* responsável fica oculto no agrupamento; aparece só ao expandir */
       +'<td class="num">'+(g.planejado?h(g.planejado):"—")+'</td>'
       +'<td class="num">'+h(g.apontado)+'</td>'
       +'<td class="num '+(g.saldo!=null&&g.saldo<0?"rhNeg":"rhPos")+'">'+(g.saldo!=null?h(g.saldo):"—")+'</td>'
@@ -541,10 +572,18 @@ function popularSelects(){
 
   var poSel=$("rhPo");
   while(poSel.options.length>1)poSel.remove(1);
-  var pos={};DATA.rows.forEach(function(r){if(r.poId)pos[r.poId]=1;});
-  Object.keys(pos).map(function(id){return{id:id,title:(POINFO[id]&&POINFO[id].title)||("PO #"+id)};})
+  /* dropdown de PO deduplicado por NÚMERO (valor = número normalizado,
+     rótulo = título original) — evita entradas repetidas para a mesma PO. */
+  var pos={};
+  DATA.rows.forEach(function(r){
+    if(!r.poId) return;
+    var title=(POINFO[r.poId]&&POINFO[r.poId].title)||("PO #"+r.poId);
+    var key=normTitle(title)||("PO #"+r.poId);
+    if(!pos[key]) pos[key]=title;
+  });
+  Object.keys(pos).map(function(key){return{value:key,title:pos[key]};})
     .sort(function(a,b){return String(a.title).localeCompare(String(b.title),"pt-BR");})
-    .forEach(function(p){var o=document.createElement("option");o.value=p.id;o.textContent=p.title;poSel.appendChild(o);});
+    .forEach(function(p){var o=document.createElement("option");o.value=p.value;o.textContent=p.title;poSel.appendChild(o);});
 }
 
 /* ===================== EXPORT CSV (resumo por PO) ===================== */
